@@ -1,0 +1,71 @@
+services:
+  crm-postgres:
+    image: postgres:16-alpine
+    container_name: panoram-crm-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - panoram_crm_postgres_data:/var/lib/postgresql/data
+    networks:
+      - panoram_crm_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crm-redis:
+    image: redis:7-alpine
+    container_name: panoram-crm-redis
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - panoram_crm_redis_data:/data
+    networks:
+      - panoram_crm_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crm-api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: panoram-crm-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@crm-postgres:5432/${POSTGRES_DB}
+      REDIS_HOST: crm-redis
+      REDIS_PORT: 6379
+      APP_NAME: crmpanoramtrack
+      IP_HASH_SALT: ${IP_HASH_SALT}
+      RUN_SEED: ${RUN_SEED}
+      TEST_WHATSAPP_PHONE: ${TEST_WHATSAPP_PHONE}
+    ports:
+      - "3001:3000"
+    depends_on:
+      crm-postgres:
+        condition: service_healthy
+      crm-redis:
+        condition: service_healthy
+    networks:
+      - panoram_crm_network
+
+networks:
+  panoram_crm_network:
+    driver: bridge
+
+volumes:
+  panoram_crm_postgres_data:
+  panoram_crm_redis_data:
