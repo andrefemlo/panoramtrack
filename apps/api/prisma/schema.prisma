@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trackingLinks TrackingLink[]
+  clickEvents   ClickEvent[]
+}
+
+model TrackingLink {
+  id                     String   @id @default(cuid())
+  clientId               String
+  slug                   String   @unique
+  name                   String
+  sourcePlatform          String?
+  campaignName            String?
+  campaignId              String?
+  adsetName               String?
+  adsetId                 String?
+  adName                  String?
+  adId                    String?
+  whatsappPhone           String
+  whatsappInitialMessage  String
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  client      Client       @relation(fields: [clientId], references: [id])
+  clickEvents ClickEvent[]
+}
+
+model ClickEvent {
+  id                       String   @id @default(cuid())
+  clientId                 String
+  trackingLinkId           String
+  clickCode                String   @unique
+  destinationWhatsappPhone String
+
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+
+  gclid  String?
+  gbraid String?
+  wbraid String?
+  fbclid String?
+  fbc    String?
+  fbp    String?
+
+  ipHash    String?
+  userAgent String?
+  referrer  String?
+
+  clickedAt DateTime @default(now())
+  expiresAt DateTime
+
+  isMatched     Boolean   @default(false)
+  matchedLeadId String?
+  matchedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client       Client       @relation(fields: [clientId], references: [id])
+  trackingLink TrackingLink @relation(fields: [trackingLinkId], references: [id])
+
+  @@index([clientId])
+  @@index([trackingLinkId])
+  @@index([destinationWhatsappPhone])
+  @@index([clickedAt])
+  @@index([isMatched])
+}
