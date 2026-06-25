@@ -14,30 +14,36 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trackingLinks TrackingLink[]
-  clickEvents   ClickEvent[]
+  trackingLinks     TrackingLink[]
+  clickEvents       ClickEvent[]
+  whatsappInstances WhatsAppInstance[]
+  leads             Lead[]
+  leadAttributions  LeadAttribution[]
+  conversations     Conversation[]
+  messages          Message[]
 }
 
 model TrackingLink {
-  id                     String   @id @default(cuid())
-  clientId               String
-  slug                   String   @unique
-  name                   String
-  sourcePlatform          String?
-  campaignName            String?
-  campaignId              String?
-  adsetName               String?
-  adsetId                 String?
-  adName                  String?
-  adId                    String?
-  whatsappPhone           String
-  whatsappInitialMessage  String
-  isActive                Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  clientId              String
+  slug                  String   @unique
+  name                  String
+  sourcePlatform        String?
+  campaignName          String?
+  campaignId            String?
+  adsetName             String?
+  adsetId               String?
+  adName                String?
+  adId                  String?
+  whatsappPhone         String
+  whatsappInitialMessage String
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  client      Client       @relation(fields: [clientId], references: [id])
-  clickEvents ClickEvent[]
+  client           Client            @relation(fields: [clientId], references: [id])
+  clickEvents      ClickEvent[]
+  leadAttributions LeadAttribution[]
 }
 
 model ClickEvent {
@@ -74,12 +80,150 @@ model ClickEvent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client       Client       @relation(fields: [clientId], references: [id])
-  trackingLink TrackingLink @relation(fields: [trackingLinkId], references: [id])
+  client           Client            @relation(fields: [clientId], references: [id])
+  trackingLink     TrackingLink      @relation(fields: [trackingLinkId], references: [id])
+  leadAttributions LeadAttribution[]
 
   @@index([clientId])
   @@index([trackingLinkId])
   @@index([destinationWhatsappPhone])
   @@index([clickedAt])
   @@index([isMatched])
+}
+
+model WhatsAppInstance {
+  id          String   @id @default(cuid())
+  clientId    String
+  name        String
+  phoneNumber String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client        Client         @relation(fields: [clientId], references: [id])
+  conversations Conversation[]
+
+  @@unique([clientId, name])
+  @@index([clientId])
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  clientId       String
+  name           String?
+  phone          String
+  email          String?
+  status         String   @default("new")
+  source         String   @default("whatsapp")
+  firstMessage   String?
+  currentStage   String?
+  assignedUserId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  client           Client            @relation(fields: [clientId], references: [id])
+  attributions     LeadAttribution[]
+  conversations    Conversation[]
+  messages         Message[]
+
+  @@unique([clientId, phone])
+  @@index([clientId])
+  @@index([phone])
+  @@index([status])
+}
+
+model LeadAttribution {
+  id             String   @id @default(cuid())
+  leadId         String
+  clientId       String
+  trackingLinkId String?
+  clickEventId   String?
+
+  sourcePlatform String?
+  campaignName   String?
+  campaignId     String?
+  adsetName      String?
+  adsetId        String?
+  adName         String?
+  adId           String?
+
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+
+  gclid  String?
+  gbraid String?
+  wbraid String?
+  fbclid String?
+  fbc    String?
+  fbp    String?
+
+  matchMethod     String   @default("unknown")
+  matchConfidence String   @default("unknown")
+  attributedAt    DateTime @default(now())
+
+  lead         Lead          @relation(fields: [leadId], references: [id])
+  client       Client        @relation(fields: [clientId], references: [id])
+  trackingLink TrackingLink? @relation(fields: [trackingLinkId], references: [id])
+  clickEvent   ClickEvent?   @relation(fields: [clickEventId], references: [id])
+
+  @@unique([leadId, clickEventId])
+  @@index([leadId])
+  @@index([clientId])
+  @@index([trackingLinkId])
+  @@index([clickEventId])
+  @@index([matchMethod])
+  @@index([matchConfidence])
+}
+
+model Conversation {
+  id                 String   @id @default(cuid())
+  clientId           String
+  leadId             String
+  whatsappInstanceId String?
+  channel            String   @default("whatsapp")
+  externalChatId     String
+  leadPhone          String
+  status             String   @default("open")
+  lastMessageAt      DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  client           Client            @relation(fields: [clientId], references: [id])
+  lead             Lead              @relation(fields: [leadId], references: [id])
+  whatsappInstance WhatsAppInstance? @relation(fields: [whatsappInstanceId], references: [id])
+  messages         Message[]
+
+  @@unique([clientId, externalChatId])
+  @@index([clientId])
+  @@index([leadId])
+  @@index([leadPhone])
+  @@index([status])
+}
+
+model Message {
+  id                String   @id @default(cuid())
+  conversationId    String
+  clientId          String
+  leadId            String
+  externalMessageId String?
+  direction         String
+  messageType       String   @default("text")
+  body              String?
+  fromPhone         String?
+  toPhone           String?
+  sentAt            DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  client       Client       @relation(fields: [clientId], references: [id])
+  lead         Lead         @relation(fields: [leadId], references: [id])
+
+  @@unique([clientId, externalMessageId])
+  @@index([conversationId])
+  @@index([clientId])
+  @@index([leadId])
+  @@index([sentAt])
 }
