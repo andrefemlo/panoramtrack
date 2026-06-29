@@ -6,14 +6,14 @@ const API_BASE =
 
 // const API_BASE_URL = "http://2.24.95.64:3001";
 
-// const state = {
-//   leads: [],
-//   stages: [],
-//   selectedLeadId: null,
-//   selectedLead: null,
-//   search: "",
-//   loading: false,
-// };
+const state = {
+  leads: [],
+  stages: [],
+  selectedLeadId: null,
+  selectedLead: null,
+  search: "",
+  loading: false,
+};
 
 const boardEl = document.getElementById("board");
 const leadPanelEl = document.getElementById("lead-panel");
