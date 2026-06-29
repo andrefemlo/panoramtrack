@@ -22,6 +22,9 @@ export class LeadsService {
     skip?: number;
   }) {
     const client = await this.getDemoClient();
+
+    await this.syncWhatsappInstanceStatuses(client.id);
+
     const take = this.clampTake(query.take);
     const skip = Math.max(query.skip || 0, 0);
 
@@ -32,11 +35,7 @@ export class LeadsService {
     const where: Prisma.LeadWhereInput = {
       clientId: client.id,
       conversations: {
-        some: {
-          externalChatId: {
-            endsWith: "@s.whatsapp.net",
-          },
-        },
+        some: this.activeIndividualConversationWhere(),
       },
       ...(query.stage ? this.buildStageFilter(query.stage) : {}),
       ...(query.search
@@ -67,12 +66,21 @@ export class LeadsService {
             take: 1,
           },
           conversations: {
+            where: this.activeIndividualConversationWhere(),
             orderBy: {
               lastMessageAt: "desc",
             },
             take: 1,
+            include: {
+              whatsappInstance: true,
+            },
           },
           messages: {
+            where: {
+              conversation: {
+                is: this.activeIndividualConversationWhere(),
+              },
+            },
             orderBy: {
               sentAt: "desc",
             },
@@ -95,16 +103,15 @@ export class LeadsService {
 
   async getLead(leadId: string) {
     const client = await this.getDemoClient();
+
+    await this.syncWhatsappInstanceStatuses(client.id);
+
     const lead = await this.prisma.lead.findFirst({
       where: {
         id: leadId,
         clientId: client.id,
         conversations: {
-          some: {
-            externalChatId: {
-              endsWith: "@s.whatsapp.net",
-            },
-          },
+          some: this.activeIndividualConversationWhere(),
         },
       },
       include: {
@@ -114,6 +121,7 @@ export class LeadsService {
           },
         },
         conversations: {
+          where: this.activeIndividualConversationWhere(),
           orderBy: {
             lastMessageAt: "desc",
           },
@@ -122,6 +130,11 @@ export class LeadsService {
           },
         },
         messages: {
+          where: {
+            conversation: {
+              is: this.activeIndividualConversationWhere(),
+            },
+          },
           orderBy: {
             sentAt: "asc",
           },
@@ -161,6 +174,8 @@ export class LeadsService {
   ) {
     const client = await this.getDemoClient();
 
+    await this.syncWhatsappInstanceStatuses(client.id);
+
     if (!isPipelineStage(body.stage)) {
       throw new BadRequestException("Invalid pipeline stage");
     }
@@ -176,6 +191,9 @@ export class LeadsService {
         where: {
           id: leadId,
           clientId: client.id,
+          conversations: {
+            some: this.activeIndividualConversationWhere(),
+          },
         },
       });
 
@@ -271,6 +289,7 @@ export class LeadsService {
     },
   ) {
     const client = await this.getDemoClient();
+
     const take = Math.min(Math.max(query.take || 25, 1), 100);
     const sinceHours = Math.min(Math.max(query.sinceHours || 72, 1), 24 * 30);
     const clickedAfter = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
@@ -279,6 +298,9 @@ export class LeadsService {
       where: {
         id: leadId,
         clientId: client.id,
+        conversations: {
+          some: this.activeIndividualConversationWhere(),
+        },
       },
     });
 
@@ -308,12 +330,22 @@ export class LeadsService {
                 { gclid: { contains: search, mode: "insensitive" } },
                 {
                   trackingLink: {
-                    campaignName: { contains: search, mode: "insensitive" },
+                    is: {
+                      campaignName: {
+                        contains: search,
+                        mode: "insensitive",
+                      },
+                    },
                   },
                 },
                 {
                   trackingLink: {
-                    adName: { contains: search, mode: "insensitive" },
+                    is: {
+                      adName: {
+                        contains: search,
+                        mode: "insensitive",
+                      },
+                    },
                   },
                 },
               ],
@@ -405,6 +437,9 @@ export class LeadsService {
       where: {
         id: leadId,
         clientId: client.id,
+        conversations: {
+          some: this.activeIndividualConversationWhere(),
+        },
       },
     });
 
@@ -551,14 +586,146 @@ export class LeadsService {
     };
   }
 
-  private optionalString(value: unknown): string | null {
-    if (typeof value !== "string") {
+  private async syncWhatsappInstanceStatuses(clientId: string) {
+    const baseUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+
+    if (!baseUrl || !apiKey) {
+      return;
+    }
+
+    const instances = await this.prisma.whatsAppInstance.findMany({
+      where: {
+        clientId,
+      },
+    });
+
+    for (const instance of instances) {
+      const status = await this.getEvolutionInstanceStatus(instance.name);
+
+      if (!status || status === instance.status) {
+        continue;
+      }
+
+      await this.prisma.whatsAppInstance.update({
+        where: {
+          id: instance.id,
+        },
+        data: {
+          status,
+        },
+      });
+    }
+  }
+
+  private async getEvolutionInstanceStatus(
+    instanceName: string,
+  ): Promise<"active" | "inactive" | "deleted" | null> {
+    const baseUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+
+    if (!baseUrl || !apiKey || !instanceName.trim()) {
       return null;
     }
 
-    const trimmed = value.trim();
+    const url = `${baseUrl.replace(/\/$/, "")}/instance/connectionState/${encodeURIComponent(
+      instanceName,
+    )}`;
 
-    return trimmed || null;
+    let response: any;
+
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        headers: {
+          apikey: apiKey,
+        },
+      });
+    } catch {
+      return null;
+    }
+
+    if (response.status === 404) {
+      return "deleted";
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const text = await response.text();
+
+    let data: unknown = null;
+
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+
+    const state = this.extractEvolutionConnectionState(data);
+
+    if (!state) {
+      return null;
+    }
+
+    const normalized = state.toLowerCase();
+
+    if (["open", "connected", "online", "active"].includes(normalized)) {
+      return "active";
+    }
+
+    if (
+      [
+        "close",
+        "closed",
+        "disconnected",
+        "offline",
+        "connecting",
+        "qrcode",
+        "qr",
+        "pairing",
+        "inactive",
+      ].includes(normalized)
+    ) {
+      return "inactive";
+    }
+
+    return "inactive";
+  }
+
+  private extractEvolutionConnectionState(data: unknown): string | null {
+    if (!data || typeof data !== "object") {
+      return typeof data === "string" ? data : null;
+    }
+
+    const value = data as any;
+
+    const state =
+      value.state ||
+      value.status ||
+      value.connectionStatus ||
+      value.instance?.state ||
+      value.instance?.status ||
+      value.instance?.connectionStatus ||
+      value.data?.state ||
+      value.data?.status ||
+      value.data?.connectionStatus;
+
+    return typeof state === "string" && state.trim() ? state.trim() : null;
+  }
+
+  private activeIndividualConversationWhere(): Prisma.ConversationWhereInput {
+    return {
+      externalChatId: {
+        endsWith: "@s.whatsapp.net",
+      },
+      whatsappInstance: {
+        is: {
+          status: "active",
+        },
+      },
+    };
   }
 
   private async getDemoClient() {
@@ -613,5 +780,15 @@ export class LeadsService {
       latestConversation: lead.conversations[0] || null,
       latestMessage: lead.messages[0] || null,
     };
+  }
+
+  private optionalString(value: unknown): string | null {
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const trimmed = value.trim();
+
+    return trimmed || null;
   }
 }

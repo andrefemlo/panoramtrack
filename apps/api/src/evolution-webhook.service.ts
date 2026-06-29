@@ -66,11 +66,13 @@ export class EvolutionWebhookService {
       },
       update: {
         phoneNumber: instancePhone || undefined,
+        status: "active",
       },
       create: {
         clientId: client.id,
         name: instanceName,
         phoneNumber: instancePhone || null,
+        status: "active",
       },
     });
 
