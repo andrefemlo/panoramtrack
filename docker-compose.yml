@@ -3,9 +3,9 @@ services:
     image: postgres:16-alpine
     container_name: panoram-crm-postgres
     environment:
-      POSTGRES_DB: panoram_crm
-      POSTGRES_USER: panoram
-      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     restart: unless-stopped
     ports:
       - "127.0.0.1:5433:5432"
@@ -14,7 +14,8 @@ services:
     networks:
       - panoram_crm_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U panoram -d panoram_crm"]
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -39,24 +40,19 @@ services:
       start_period: 10s
 
   crm-api:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+    image: ghcr.io/andrefemlo/panoramtrack-api:latest
     container_name: panoram-crm-api
     restart: unless-stopped
     environment:
       NODE_ENV: production
       PORT: 3000
-
-      DATABASE_URL: postgresql://panoram@crm-postgres:5432/panoram_crm
-
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@crm-postgres:5432/${POSTGRES_DB}
       REDIS_HOST: crm-redis
       REDIS_PORT: 6379
-
       APP_NAME: crmpanoramtrack
-      IP_HASH_SALT: bootstrap_dev_salt_change_later
-      RUN_SEED: "true"
-      TEST_WHATSAPP_PHONE: "5599999999999"
+      IP_HASH_SALT: ${IP_HASH_SALT}
+      RUN_SEED: ${RUN_SEED}
+      TEST_WHATSAPP_PHONE: ${TEST_WHATSAPP_PHONE}
     ports:
       - "3001:3000"
     depends_on:
