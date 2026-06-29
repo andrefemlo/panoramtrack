@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from "@nestjs/common";
 import { LeadsService } from "./leads.service";
 
 @Controller("leads")
@@ -20,9 +28,34 @@ export class LeadsController {
     });
   }
 
+  @Get(":id/attribution-candidates")
+  async listAttributionCandidates(
+    @Param("id") id: string,
+    @Query("search") search?: string,
+    @Query("take") take?: string,
+    @Query("sinceHours") sinceHours?: string,
+  ) {
+    return this.leadsService.listAttributionCandidates(id, {
+      search,
+      take: Number(take) || undefined,
+      sinceHours: Number(sinceHours) || undefined,
+    });
+  }
+
   @Get(":id")
   async getLead(@Param("id") id: string) {
     return this.leadsService.getLead(id);
+  }
+
+  @Post(":id/attributions/manual")
+  async createManualAttribution(
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ) {
+    return this.leadsService.createManualAttribution(
+      id,
+      body && typeof body === "object" ? body : {},
+    );
   }
 
   @Patch(":id/stage")
