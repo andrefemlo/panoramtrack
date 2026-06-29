@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "./prisma.service";
 
 @Injectable()
@@ -26,6 +27,13 @@ export class EvolutionWebhookService {
     const pushName = this.extractPushName(data);
     const fromMe = this.extractFromMe(data);
     const sentAt = this.extractSentAt(data);
+
+    await this.capturePayloadSample({
+      payload: data,
+      instanceName,
+      externalMessageId,
+      fromMe,
+    });
 
     if (!leadPhone || !externalChatId) {
       return {
@@ -172,6 +180,17 @@ export class EvolutionWebhookService {
       matchConfidence,
       matchedClickEventId,
     };
+  }
+
+  async listPayloadSamples(take: number) {
+    const safeTake = Math.min(Math.max(take, 1), 100);
+
+    return this.prisma.webhookPayloadSample.findMany({
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: safeTake,
+    });
   }
 
   private async matchByClickCode(params: {
@@ -461,5 +480,123 @@ export class EvolutionWebhookService {
     const match = text.match(/\bref\s*[:#-]?\s*([A-Fa-f0-9]{8})\b/i);
 
     return match?.[1]?.toUpperCase() || null;
+  }
+
+  private async capturePayloadSample(params: {
+    payload: any;
+    instanceName: string;
+    externalMessageId: string;
+    fromMe: boolean;
+  }) {
+    if (process.env.EVOLUTION_WEBHOOK_CAPTURE_PAYLOADS !== "true") {
+      return;
+    }
+
+    try {
+      await this.prisma.webhookPayloadSample.create({
+        data: {
+          provider: "evolution",
+          eventType: this.extractEventType(params.payload),
+          instanceName: params.instanceName,
+          externalMessageId: params.externalMessageId,
+          fromMe: params.fromMe,
+          payload: this.sanitizePayload(params.payload) as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error) {
+      console.warn("failed to capture evolution webhook payload sample", error);
+    }
+  }
+
+  private extractEventType(payload: any): string | null {
+    return (
+      payload?.event ||
+      payload?.type ||
+      payload?.data?.event ||
+      payload?.messageType ||
+      payload?.data?.messageType ||
+      null
+    );
+  }
+
+  private sanitizePayload(value: unknown): Prisma.JsonValue {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizePayload(item));
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    if (typeof value === "object") {
+      const sanitized: Record<string, Prisma.JsonValue> = {};
+
+      for (const [key, childValue] of Object.entries(value)) {
+        if (this.shouldRedactKey(key)) {
+          sanitized[key] = "[redacted]";
+          continue;
+        }
+
+        sanitized[key] = this.sanitizePayload(childValue);
+      }
+
+      return sanitized;
+    }
+
+    if (typeof value === "string") {
+      return this.sanitizeString(value);
+    }
+
+    if (typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+
+    return String(value);
+  }
+
+  private shouldRedactKey(key: string): boolean {
+    const normalized = key.toLowerCase();
+
+    return [
+      "apikey",
+      "authorization",
+      "password",
+      "secret",
+      "token",
+      "mediakey",
+      "messagesecret",
+      "filesha256",
+      "fileencsha256",
+      "jpegthumbnail",
+    ].some((sensitiveKey) => normalized.includes(sensitiveKey));
+  }
+
+  private sanitizeString(value: string): string {
+    const truncated =
+      value.length > 1000 ? `${value.slice(0, 1000)}[truncated]` : value;
+
+    if (truncated.includes("@s.whatsapp.net") || truncated.includes("@c.us")) {
+      return truncated.replace(/\d{8,}(?=@)/g, (match) =>
+        this.maskPhone(match),
+      );
+    }
+
+    if (/^\d{10,15}$/.test(truncated)) {
+      return this.maskPhone(truncated);
+    }
+
+    return truncated;
+  }
+
+  private maskPhone(phone: string): string {
+    if (phone.length <= 4) {
+      return "[masked]";
+    }
+
+    return `${"*".repeat(phone.length - 4)}${phone.slice(-4)}`;
   }
 }

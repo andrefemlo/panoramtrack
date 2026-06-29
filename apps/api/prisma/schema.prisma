@@ -227,3 +227,20 @@ model Message {
   @@index([leadId])
   @@index([sentAt])
 }
+
+model WebhookPayloadSample {
+  id                String   @id @default(cuid())
+  provider          String
+  eventType         String?
+  instanceName      String?
+  externalMessageId String?
+  fromMe            Boolean?
+  payload           Json
+  createdAt         DateTime @default(now())
+
+  @@index([provider])
+  @@index([eventType])
+  @@index([instanceName])
+  @@index([externalMessageId])
+  @@index([createdAt])
+}
