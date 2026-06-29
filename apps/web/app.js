@@ -4,15 +4,24 @@ const API_BASE =
     ? "http://127.0.0.1:3001"
     : `${window.location.protocol}//${window.location.hostname}:3001`);
 
-// const API_BASE_URL = "http://2.24.95.64:3001";
+const DEFAULT_STAGES = [
+  { slug: "new_lead", label: "Novo lead", order: 1 },
+  { slug: "in_progress", label: "Em atendimento", order: 2 },
+  { slug: "qualified", label: "Qualificado", order: 3 },
+  { slug: "proposal_sent", label: "Proposta enviada", order: 4 },
+  { slug: "won", label: "Venda realizada", order: 5 },
+  { slug: "lost", label: "Perdido", order: 6 },
+];
 
 const state = {
+  view: "pipeline",
   leads: [],
   stages: [],
   selectedLeadId: null,
   selectedLead: null,
   search: "",
   loading: false,
+  error: null,
 };
 
 const boardEl = document.getElementById("board");
@@ -23,7 +32,7 @@ const apiStatusEl = document.getElementById("api-status");
 const modalRootEl = document.getElementById("modal-root");
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -42,10 +51,11 @@ async function request(path, options = {}) {
 
 async function checkHealth() {
   try {
-    await request("/health");
-    apiStatusEl.textContent = "API online";
+    const data = await request("/health");
+    apiStatusEl.textContent = data?.status === "ok" ? "API online" : "API respondeu";
   } catch (error) {
     apiStatusEl.textContent = "API offline";
+    console.error("Health check failed:", error);
   }
 }
 
@@ -57,6 +67,7 @@ async function listLeads() {
   }
 
   const query = params.toString();
+
   return request(`/leads${query ? `?${query}` : ""}`);
 }
 
@@ -95,31 +106,68 @@ async function createManualAttribution(leadId, body) {
 
 async function refreshLeads() {
   state.loading = true;
-  renderBoard();
+  state.error = null;
+  renderCurrentView();
 
   try {
     const data = await listLeads();
-    state.leads = data.leads || [];
-    state.stages = data.stages || [];
+
+    const normalized = normalizeLeadsResponse(data);
+
+    state.leads = normalized.leads;
+    state.stages = normalized.stages;
 
     if (state.selectedLeadId) {
       await openLead(state.selectedLeadId, false);
     }
   } catch (error) {
-    boardEl.innerHTML = `<div class="error">Erro ao carregar leads: ${escapeHtml(
-      error.message,
-    )}</div>`;
+    state.error = error;
+    state.leads = [];
+    state.stages = DEFAULT_STAGES;
+    console.error("Erro ao carregar leads:", error);
   } finally {
     state.loading = false;
-    renderBoard();
+    renderCurrentView();
   }
 }
 
-async function openLead(leadId, shouldRenderBoard = true) {
+function normalizeLeadsResponse(data) {
+  const leads = Array.isArray(data) ? data : data?.leads || [];
+
+  let stages = Array.isArray(data?.stages) && data.stages.length
+    ? data.stages
+    : DEFAULT_STAGES;
+
+  const unknownStageSlugs = Array.from(
+    new Set(
+      leads
+        .map((lead) => lead.currentStage || "new_lead")
+        .filter((slug) => !stages.some((stage) => stage.slug === slug)),
+    ),
+  );
+
+  if (unknownStageSlugs.length) {
+    stages = [
+      ...stages,
+      ...unknownStageSlugs.map((slug, index) => ({
+        slug,
+        label: slug,
+        order: stages.length + index + 1,
+      })),
+    ];
+  }
+
+  return {
+    leads,
+    stages: [...stages].sort((a, b) => (a.order || 0) - (b.order || 0)),
+  };
+}
+
+async function openLead(leadId, shouldRenderView = true) {
   state.selectedLeadId = leadId;
 
-  if (shouldRenderBoard) {
-    renderBoard();
+  if (shouldRenderView) {
+    renderCurrentView();
   }
 
   leadPanelEl.classList.remove("hidden");
@@ -150,14 +198,79 @@ function closeLeadPanel() {
   state.selectedLead = null;
   leadPanelEl.classList.add("hidden");
   leadPanelEl.innerHTML = `<div class="empty-panel">Selecione um lead para ver detalhes.</div>`;
-  renderBoard();
+  renderCurrentView();
 }
 
-function renderBoard() {
+function setView(view) {
+  state.view = view;
+
+  document.querySelectorAll("[data-view]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === view);
+  });
+
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  updateHeader();
+
   if (state.loading) {
+    boardEl.className = "pipeline-board";
     boardEl.innerHTML = `<div class="loading">Carregando leads...</div>`;
     return;
   }
+
+  if (state.error) {
+    boardEl.className = "pipeline-board";
+    boardEl.innerHTML = `
+      <div class="error">
+        Erro ao carregar dados da API.<br />
+        <strong>${escapeHtml(state.error.message)}</strong><br />
+        <small>Verifique se o app.js está usando ${escapeHtml(API_BASE)}.</small>
+      </div>
+    `;
+    return;
+  }
+
+  if (state.view === "conversations") {
+    renderConversationsView();
+    return;
+  }
+
+  if (state.view === "contacts") {
+    renderContactsView();
+    return;
+  }
+
+  renderPipelineView();
+}
+
+function updateHeader() {
+  const titleEl = document.querySelector(".topbar h1");
+  const subtitleEl = document.querySelector(".topbar p");
+
+  if (!titleEl || !subtitleEl) {
+    return;
+  }
+
+  if (state.view === "conversations") {
+    titleEl.textContent = "Conversas";
+    subtitleEl.textContent = "Últimas conversas recebidas pelo WhatsApp.";
+    return;
+  }
+
+  if (state.view === "contacts") {
+    titleEl.textContent = "Contatos";
+    subtitleEl.textContent = "Base de leads e contatos capturados.";
+    return;
+  }
+
+  titleEl.textContent = "Pipeline comercial";
+  subtitleEl.textContent = "Leads, conversas e atribuições das campanhas.";
+}
+
+function renderPipelineView() {
+  boardEl.className = "pipeline-board";
 
   if (!state.stages.length) {
     boardEl.innerHTML = `<div class="empty-state">Nenhuma etapa de pipeline encontrada.</div>`;
@@ -166,7 +279,9 @@ function renderBoard() {
 
   const columns = state.stages
     .map((stage) => {
-      const leads = state.leads.filter((lead) => lead.currentStage === stage.slug);
+      const leads = state.leads.filter(
+        (lead) => (lead.currentStage || "new_lead") === stage.slug,
+      );
 
       return `
         <article class="pipeline-column">
@@ -190,12 +305,137 @@ function renderBoard() {
     .join("");
 
   boardEl.innerHTML = columns;
+  bindOpenLeadButtons();
+}
 
-  document.querySelectorAll("[data-open-lead]").forEach((button) => {
-    button.addEventListener("click", () => {
-      openLead(button.dataset.openLead);
+function renderConversationsView() {
+  boardEl.className = "list-view";
+
+  const conversations = [...state.leads]
+    .filter((lead) => lead.latestConversation || lead.latestMessage)
+    .sort((a, b) => {
+      const aDate = new Date(
+        a.latestConversation?.lastMessageAt ||
+        a.latestMessage?.sentAt ||
+        a.updatedAt ||
+        0,
+      ).getTime();
+
+      const bDate = new Date(
+        b.latestConversation?.lastMessageAt ||
+        b.latestMessage?.sentAt ||
+        b.updatedAt ||
+        0,
+      ).getTime();
+
+      return bDate - aDate;
     });
+
+  if (!conversations.length) {
+    boardEl.innerHTML = `<div class="empty-state">Nenhuma conversa encontrada.</div>`;
+    return;
+  }
+
+  boardEl.innerHTML = `
+    <div class="conversation-list">
+      ${conversations
+      .map((lead) => {
+        const message = lead.latestMessage;
+        const conversation = lead.latestConversation;
+
+        return `
+            <button
+              class="conversation-card ${lead.id === state.selectedLeadId ? "active" : ""}"
+              type="button"
+              data-open-lead="${escapeAttribute(lead.id)}"
+            >
+              <div class="conversation-main">
+                <div class="avatar">${escapeHtml(getInitials(lead.name || lead.phone))}</div>
+
+                <div class="conversation-content">
+                  <div class="conversation-row">
+                    <strong class="truncate">${escapeHtml(
+          lead.name || lead.phone || "Contato sem nome",
+        )}</strong>
+                    <span>${formatDate(
+          conversation?.lastMessageAt || message?.sentAt || lead.updatedAt,
+        )}</span>
+                  </div>
+
+                  <div class="conversation-row muted">
+                    <span class="truncate">${escapeHtml(lead.phone || "-")}</span>
+                    <span>${escapeHtml(conversation?.channel || "whatsapp")}</span>
+                  </div>
+
+                  <p>${escapeHtml(message?.body || "Mensagem sem texto")}</p>
+                </div>
+              </div>
+            </button>
+          `;
+      })
+      .join("")}
+    </div>
+  `;
+
+  bindOpenLeadButtons();
+}
+
+function renderContactsView() {
+  boardEl.className = "list-view";
+
+  if (!state.leads.length) {
+    boardEl.innerHTML = `<div class="empty-state">Nenhum contato encontrado.</div>`;
+    return;
+  }
+
+  const contacts = [...state.leads].sort((a, b) => {
+    const aName = a.name || a.phone || "";
+    const bName = b.name || b.phone || "";
+
+    return aName.localeCompare(bName, "pt-BR");
   });
+
+  boardEl.innerHTML = `
+    <div class="contacts-list">
+      ${contacts
+      .map((lead) => {
+        const attribution = lead.latestAttribution;
+        const campaign =
+          attribution?.utmCampaign ||
+          attribution?.campaignName ||
+          attribution?.utmSource ||
+          "Sem atribuição";
+
+        return `
+            <button
+              class="contact-card ${lead.id === state.selectedLeadId ? "active" : ""}"
+              type="button"
+              data-open-lead="${escapeAttribute(lead.id)}"
+            >
+              <div class="avatar">${escapeHtml(getInitials(lead.name || lead.phone))}</div>
+
+              <div class="contact-content">
+                <strong class="truncate">${escapeHtml(
+          lead.name || lead.phone || "Contato sem nome",
+        )}</strong>
+                <span class="truncate">${escapeHtml(lead.phone || "-")}</span>
+              </div>
+
+              <div class="contact-meta">
+                <span class="badge badge-neutral">${escapeHtml(
+          lead.currentStageLabel || lead.currentStage || "Novo lead",
+        )}</span>
+                <span class="badge ${attribution ? "badge-blue" : "badge-amber"
+          }">${escapeHtml(campaign)}</span>
+              </div>
+            </button>
+          `;
+      })
+      .join("")}
+    </div>
+  `;
+
+  bindOpenLeadButtons();
 }
 
 function renderLeadCard(lead) {
@@ -239,6 +479,14 @@ function renderLeadCard(lead) {
       </div>
     </button>
   `;
+}
+
+function bindOpenLeadButtons() {
+  document.querySelectorAll("[data-open-lead]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openLead(button.dataset.openLead);
+    });
+  });
 }
 
 function renderLeadPanel() {
@@ -295,7 +543,7 @@ function renderLeadPanel() {
 
       <section class="panel-section">
         <h3>Conversas</h3>
-        ${renderConversations(lead.conversations || [])}
+        ${renderConversationDetails(lead.conversations || [])}
       </section>
 
       <section class="panel-section">
@@ -360,7 +608,7 @@ function renderAttributions(attributions) {
     .join("");
 }
 
-function renderConversations(conversations) {
+function renderConversationDetails(conversations) {
   if (!conversations.length) {
     return `<div class="empty-state">Nenhuma conversa encontrada.</div>`;
   }
@@ -487,13 +735,15 @@ async function openManualAttributionModal(lead) {
     </div>
   `;
 
-  const closeModalButton = document.getElementById("close-modal-button");
-  const searchButton = document.getElementById("candidate-search-button");
-  const saveManualOnlyButton = document.getElementById("save-manual-only-button");
+  document.getElementById("close-modal-button").addEventListener("click", closeModal);
 
-  closeModalButton.addEventListener("click", closeModal);
-  searchButton.addEventListener("click", () => loadCandidates(lead.id));
-  saveManualOnlyButton.addEventListener("click", () => saveManualOnly(lead.id));
+  document.getElementById("candidate-search-button").addEventListener("click", () => {
+    loadCandidates(lead.id);
+  });
+
+  document.getElementById("save-manual-only-button").addEventListener("click", () => {
+    saveManualOnly(lead.id);
+  });
 
   await loadCandidates(lead.id);
 }
@@ -595,6 +845,17 @@ async function saveManualOnly(leadId) {
   }
 }
 
+function getInitials(value) {
+  const safeValue = String(value || "P").trim();
+
+  return safeValue
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
 function escapeHtml(value) {
   if (value === null || value === undefined) {
     return "";
@@ -623,6 +884,12 @@ function formatDate(value) {
     return "-";
   }
 }
+
+document.querySelectorAll("[data-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    setView(button.dataset.view);
+  });
+});
 
 refreshButtonEl.addEventListener("click", refreshLeads);
 
