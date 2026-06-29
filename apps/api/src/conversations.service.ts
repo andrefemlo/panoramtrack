@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "./prisma.service";
 
 @Injectable()
@@ -209,7 +213,7 @@ export class ConversationsService {
     }
 
     const response = await fetch(
-      `${baseUrl.replace(/\\/$/, "")}/message/${params.endpoint}/${params.instanceName}`,
+      `${baseUrl.replace(/\/$/, "")}/message/${params.endpoint}/${params.instanceName}`,
       {
         method: "POST",
         headers: {
