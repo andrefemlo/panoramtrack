@@ -21,6 +21,8 @@ model Client {
   leadAttributions  LeadAttribution[]
   conversations     Conversation[]
   messages          Message[]
+  leadStageHistories LeadStageHistory[]
+  conversionEvents  ConversionEvent[]
 }
 
 model TrackingLink {
@@ -125,11 +127,14 @@ model Lead {
   attributions     LeadAttribution[]
   conversations    Conversation[]
   messages         Message[]
+  stageHistory     LeadStageHistory[]
+  conversionEvents ConversionEvent[]
 
   @@unique([clientId, phone])
   @@index([clientId])
   @@index([phone])
   @@index([status])
+  @@index([currentStage])
 }
 
 model LeadAttribution {
@@ -243,4 +248,44 @@ model WebhookPayloadSample {
   @@index([instanceName])
   @@index([externalMessageId])
   @@index([createdAt])
+}
+
+model LeadStageHistory {
+  id          String   @id @default(cuid())
+  leadId      String
+  clientId    String
+  fromStage   String?
+  toStage     String
+  changedBy   String?
+  source      String   @default("api")
+  note        String?
+  changedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  lead   Lead   @relation(fields: [leadId], references: [id])
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@index([leadId])
+  @@index([clientId])
+  @@index([toStage])
+  @@index([changedAt])
+}
+
+model ConversionEvent {
+  id        String   @id @default(cuid())
+  clientId  String
+  leadId    String
+  eventName String
+  source    String   @default("crm")
+  payload   Json?
+  occurredAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id])
+  lead   Lead   @relation(fields: [leadId], references: [id])
+
+  @@index([clientId])
+  @@index([leadId])
+  @@index([eventName])
+  @@index([occurredAt])
 }

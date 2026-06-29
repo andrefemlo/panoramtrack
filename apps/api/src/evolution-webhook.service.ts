@@ -76,6 +76,7 @@ export class EvolutionWebhookService {
         source: "whatsapp",
         firstMessage: messageText || null,
         status: "new",
+        currentStage: "new_lead",
       },
     });
 
