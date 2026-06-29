@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Panoram Tracking CRM</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Panoram Tracking</p>
+          <h1>CRM</h1>
+        </div>
+
+        <section class="toolbar" aria-label="Controles do CRM">
+          <label class="search-box">
+            <span>Buscar</span>
+            <input id="searchInput" type="search" placeholder="Nome, telefone ou email" />
+          </label>
+          <button id="refreshButton" class="secondary-button" type="button">Atualizar</button>
+        </section>
+      </header>
+
+      <section id="metrics" class="metrics" aria-label="Resumo do funil"></section>
+
+      <section id="statusBanner" class="status-banner" hidden></section>
+
+      <section id="board" class="board" aria-label="Pipeline comercial"></section>
+    </main>
+
+    <aside id="leadPanel" class="lead-panel" aria-label="Detalhes do lead" aria-hidden="true">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Lead</p>
+          <h2 id="panelTitle">Selecionar lead</h2>
+        </div>
+        <button id="closePanelButton" class="icon-button" type="button" aria-label="Fechar painel">x</button>
+      </div>
+      <div id="panelBody" class="panel-body"></div>
+    </aside>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

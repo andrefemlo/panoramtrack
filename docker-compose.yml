@@ -65,6 +65,19 @@ services:
     networks:
       - panoram_crm_network
 
+  crm-web:
+    image: nginx:1.27-alpine
+    container_name: panoram-crm-web
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    volumes:
+      - ./apps/web:/usr/share/nginx/html:ro
+    depends_on:
+      - crm-api
+    networks:
+      - panoram_crm_network
+
 networks:
   panoram_crm_network:
     driver: bridge
