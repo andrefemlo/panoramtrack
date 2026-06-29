@@ -74,6 +74,13 @@ export class EvolutionWebhookService {
       },
     });
 
+    const contactName = this.getContactNameFromWebhook({
+      pushName,
+      fromMe,
+      leadPhone,
+      instancePhone,
+    });
+
     const existingLead = await this.prisma.lead.findUnique({
       where: {
         clientId_phone: {
@@ -88,12 +95,17 @@ export class EvolutionWebhookService {
           where: {
             id: existingLead.id,
           },
-          data: {},
+          data:
+            !existingLead.name && contactName
+              ? {
+                  name: contactName,
+                }
+              : {},
         })
       : await this.prisma.lead.create({
           data: {
             clientId: client.id,
-            name: pushName || null,
+            name: contactName,
             phone: leadPhone,
             source: "whatsapp",
             firstMessage: messageText || null,
@@ -649,5 +661,40 @@ export class EvolutionWebhookService {
     }
 
     return normalized.endsWith("@s.whatsapp.net");
+  }
+
+  private getContactNameFromWebhook(params: {
+    pushName: string | null;
+    fromMe: boolean;
+    leadPhone: string;
+    instancePhone: string | null;
+  }): string | null {
+    const pushName = params.pushName?.trim();
+
+    if (!pushName) {
+      return null;
+    }
+
+    if (params.fromMe) {
+      return null;
+    }
+
+    const normalizedPushName = pushName.replace(/\D/g, "");
+    const normalizedLeadPhone = params.leadPhone.replace(/\D/g, "");
+    const normalizedInstancePhone =
+      params.instancePhone?.replace(/\D/g, "") || "";
+
+    if (normalizedPushName && normalizedPushName === normalizedLeadPhone) {
+      return null;
+    }
+
+    if (
+      normalizedInstancePhone &&
+      normalizedPushName === normalizedInstancePhone
+    ) {
+      return null;
+    }
+
+    return pushName;
   }
 }
