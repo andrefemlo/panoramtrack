@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "./prisma.service";
 
 @Injectable()
 export class EvolutionWebhookService {
@@ -9,11 +9,11 @@ export class EvolutionWebhookService {
     const data = payload as any;
 
     const client = await this.prisma.client.upsert({
-      where: { slug: 'panoram-demo' },
+      where: { slug: "panoram-demo" },
       update: {},
       create: {
-        name: 'Panoram Demo',
-        slug: 'panoram-demo',
+        name: "Panoram Demo",
+        slug: "panoram-demo",
       },
     });
 
@@ -29,8 +29,8 @@ export class EvolutionWebhookService {
 
     if (!leadPhone || !externalChatId) {
       return {
-        status: 'ignored',
-        reason: 'missing_lead_phone_or_chat_id',
+        status: "ignored",
+        reason: "missing_lead_phone_or_chat_id",
       };
     }
 
@@ -65,9 +65,9 @@ export class EvolutionWebhookService {
         clientId: client.id,
         name: pushName || null,
         phone: leadPhone,
-        source: 'whatsapp',
+        source: "whatsapp",
         firstMessage: messageText || null,
-        status: 'new',
+        status: "new",
       },
     });
 
@@ -89,8 +89,8 @@ export class EvolutionWebhookService {
         whatsappInstanceId: whatsappInstance.id,
         externalChatId,
         leadPhone,
-        channel: 'whatsapp',
-        status: 'open',
+        channel: "whatsapp",
+        status: "open",
         lastMessageAt: sentAt,
       },
     });
@@ -113,8 +113,8 @@ export class EvolutionWebhookService {
           leadId: lead.id,
           conversationId: conversation.id,
           externalMessageId,
-          direction: fromMe ? 'outbound' : 'inbound',
-          messageType: 'text',
+          direction: fromMe ? "outbound" : "inbound",
+          messageType: "text",
           body: messageText,
           fromPhone: fromMe ? null : leadPhone,
           toPhone: fromMe ? leadPhone : null,
@@ -128,8 +128,8 @@ export class EvolutionWebhookService {
     const clickCode = this.extractClickCode(messageText);
 
     let attributionCreated = false;
-    let matchMethod = 'unknown';
-    let matchConfidence = 'unknown';
+    let matchMethod = "unknown";
+    let matchConfidence = "unknown";
     let matchedClickEventId: string | null = null;
 
     if (!fromMe) {
@@ -162,7 +162,7 @@ export class EvolutionWebhookService {
     }
 
     return {
-      status: 'ok',
+      status: "ok",
       leadId: lead.id,
       conversationId: conversation.id,
       messageCreated,
@@ -179,14 +179,7 @@ export class EvolutionWebhookService {
     leadId: string;
     clickCode: string;
   }) {
- = result.matchedClickEventId;
-      }
-    }
-
-    return {
-      status: 'ok',
-      leadId: lead.id,
-      conversationId:    const clickEvent = await this.prisma.clickEvent.findUnique({
+    const clickEvent = await this.prisma.clickEvent.findUnique({
       where: { clickCode: params.clickCode },
       include: { trackingLink: true },
     });
@@ -198,8 +191,8 @@ export class EvolutionWebhookService {
     ) {
       return {
         attributionCreated: false,
-        matchMethod: 'click_code',
-        matchConfidence: 'unknown',
+        matchMethod: "click_code",
+        matchConfidence: "unknown",
         matchedClickEventId: null,
       };
     }
@@ -208,14 +201,14 @@ export class EvolutionWebhookService {
       clientId: params.clientId,
       leadId: params.leadId,
       clickEvent,
-      matchMethod: 'click_code',
-      matchConfidence: 'deterministic',
+      matchMethod: "click_code",
+      matchConfidence: "deterministic",
     });
 
     return {
       attributionCreated: true,
-      matchMethod: 'click_code',
-      matchConfidence: 'deterministic',
+      matchMethod: "click_code",
+      matchConfidence: "deterministic",
       matchedClickEventId: clickEvent.id,
     };
   }
@@ -230,12 +223,10 @@ export class EvolutionWebhookService {
       params.sentAt.getTime() - 30 * 60 * 1000,
     );
 
-    const fiveMinutesBefore = new Date(
-      params.sentAt.getTime() - 5 * 60 * 1000,
-    );
+    const fiveMinutesBefore = new Date(params.sentAt.getTime() - 5 * 60 * 1000);
 
     const destinationWhatsappPhone = params.destinationWhatsappPhone
-      ? params.destinationWhatsappPhone.replace(/\D/g, '')
+      ? params.destinationWhatsappPhone.replace(/\D/g, "")
       : null;
 
     const candidates = await this.prisma.clickEvent.findMany({
@@ -246,41 +237,39 @@ export class EvolutionWebhookService {
           gte: thirtyMinutesBefore,
           lte: params.sentAt,
         },
-        ...(destinationWhatsappPhone
-          ? { destinationWhatsappPhone }
-          : {}),
+        ...(destinationWhatsappPhone ? { destinationWhatsappPhone } : {}),
       },
       include: {
         trackingLink: true,
       },
       orderBy: {
-        clickedAt: 'desc',
+        clickedAt: "desc",
       },
     });
 
     const recentCandidates = candidates.filter(
-      (candidate) => candidate.clickedAt >= fiveMinutesBefore,
+      (candidate: { clickedAt: Date }) => {
+        return candidate.clickedAt >= fiveMinutesBefore;
+      },
     );
 
-    let selectedClickEvent = null as (typeof candidates)[number] | null;
-    let matchConfidence = 'unknown';
+    let selectedClickEvent: any = null;
+    let matchConfidence = "unknown";
 
     if (recentCandidates.length === 1) {
       selectedClickEvent = recentCandidates[0];
-      matchConfidence = 'high';
+      matchConfidence = "high";
     } else if (recentCandidates.length === 0 && candidates.length === 1) {
       selectedClickEvent = candidates[0];
-      matchConfidence = 'medium';
+      matchConfidence = "medium";
     }
 
     if (!selectedClickEvent) {
       return {
         attributionCreated: false,
-        matchMethod: 'time_window',
-        matchConfidence: 'unknown',
+        matchMethod: "time_window",
+        matchConfidence: "unknown",
         matchedClickEventId: null,
-        candidatesFound: candidates.length,
-        recentCandidatesFound: recentCandidates.length,
       };
     }
 
@@ -288,17 +277,15 @@ export class EvolutionWebhookService {
       clientId: params.clientId,
       leadId: params.leadId,
       clickEvent: selectedClickEvent,
-      matchMethod: 'time_window',
+      matchMethod: "time_window",
       matchConfidence,
     });
 
     return {
       attributionCreated: true,
-      matchMethod: 'time_window',
+      matchMethod: "time_window",
       matchConfidence,
       matchedClickEventId: selectedClickEvent.id,
-      candidatesFound: candidates.length,
-      recentCandidatesFound: recentCandidates.length,
     };
   }
 
@@ -367,7 +354,7 @@ export class EvolutionWebhookService {
       payload?.instance ||
       payload?.instanceName ||
       payload?.data?.instance ||
-      'default'
+      "default"
     );
   }
 
@@ -381,9 +368,11 @@ export class EvolutionWebhookService {
       payload?.data?.sender ||
       null;
 
-    if (!value || typeof value !== 'string') return null;
+    if (!value || typeof value !== "string") {
+      return null;
+    }
 
-    const normalized = value.split('@')[0].replace(/\D/g, '');
+    const normalized = value.split("@")[0].replace(/\D/g, "");
 
     return normalized || null;
   }
@@ -400,11 +389,13 @@ export class EvolutionWebhookService {
   private extractLeadPhone(payload: any): string | null {
     const chatId = this.extractChatId(payload);
 
-    if (!chatId) return null;
+    if (!chatId) {
+      return null;
+    }
 
-    const raw = chatId.split('@')[0];
+    const raw = chatId.split("@")[0];
 
-    return raw.replace(/\D/g, '') || null;
+    return raw.replace(/\D/g, "") || null;
   }
 
   private extractMessageId(payload: any): string {
@@ -418,9 +409,7 @@ export class EvolutionWebhookService {
 
   private extractFromMe(payload: any): boolean {
     return Boolean(
-      payload?.data?.key?.fromMe ||
-        payload?.key?.fromMe ||
-        payload?.fromMe,
+      payload?.data?.key?.fromMe || payload?.key?.fromMe || payload?.fromMe,
     );
   }
 
@@ -452,11 +441,11 @@ export class EvolutionWebhookService {
       payload?.messageTimestamp ||
       payload?.timestamp;
 
-    if (typeof timestamp === 'number') {
+    if (typeof timestamp === "number") {
       return new Date(timestamp > 9999999999 ? timestamp : timestamp * 1000);
     }
 
-    if (typeof timestamp === 'string' && /^\d+$/.test(timestamp)) {
+    if (typeof timestamp === "string" && /^\d+$/.test(timestamp)) {
       const parsed = Number(timestamp);
       return new Date(parsed > 9999999999 ? parsed : parsed * 1000);
     }
@@ -465,7 +454,9 @@ export class EvolutionWebhookService {
   }
 
   private extractClickCode(text: string | null): string | null {
-    if (!text) return null;
+    if (!text) {
+      return null;
+    }
 
     const match = text.match(/\bref\s*[:#-]?\s*([A-Fa-f0-9]{8})\b/i);
 
