@@ -14,15 +14,18 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trackingLinks     TrackingLink[]
-  clickEvents       ClickEvent[]
-  whatsappInstances WhatsAppInstance[]
-  leads             Lead[]
-  leadAttributions  LeadAttribution[]
-  conversations     Conversation[]
-  messages          Message[]
+  trackingLinks      TrackingLink[]
+  clickEvents        ClickEvent[]
+  whatsappInstances  WhatsAppInstance[]
+  leads              Lead[]
+  leadAttributions   LeadAttribution[]
+  conversations      Conversation[]
+  messages           Message[]
   leadStageHistories LeadStageHistory[]
-  conversionEvents  ConversionEvent[]
+  conversionEvents   ConversionEvent[]
+  leadNotes          LeadNote[]
+  leadTags           LeadTag[]
+  leadTagAssignments LeadTagAssignment[]
 }
 
 model TrackingLink {
@@ -129,6 +132,8 @@ model Lead {
   messages         Message[]
   stageHistory     LeadStageHistory[]
   conversionEvents ConversionEvent[]
+    notes          LeadNote[]
+  tagAssignments   LeadTagAssignment[]
 
   @@unique([clientId, phone])
   @@index([clientId])
@@ -192,6 +197,11 @@ model Conversation {
   externalChatId     String
   leadPhone          String
   status             String   @default("open")
+  unreadCount        Int      @default(0)
+  readAt             DateTime?
+  archivedAt         DateTime?
+  pinnedAt           DateTime?
+  assignedUserId     String?
   lastMessageAt      DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -291,4 +301,55 @@ model ConversionEvent {
   @@index([leadId])
   @@index([eventName])
   @@index([occurredAt])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  clientId  String
+  leadId    String
+  body      String
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id])
+  lead   Lead   @relation(fields: [leadId], references: [id])
+
+  @@index([clientId])
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+model LeadTag {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  slug      String
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client      Client              @relation(fields: [clientId], references: [id])
+  assignments LeadTagAssignment[]
+
+  @@unique([clientId, slug])
+  @@index([clientId])
+  @@index([slug])
+}
+
+model LeadTagAssignment {
+  id        String   @id @default(cuid())
+  clientId  String
+  leadId    String
+  tagId     String
+  assignedAt DateTime @default(now())
+
+  client Client  @relation(fields: [clientId], references: [id])
+  lead   Lead    @relation(fields: [leadId], references: [id])
+  tag    LeadTag @relation(fields: [tagId], references: [id])
+
+  @@unique([leadId, tagId])
+  @@index([clientId])
+  @@index([leadId])
+  @@index([tagId])
 }

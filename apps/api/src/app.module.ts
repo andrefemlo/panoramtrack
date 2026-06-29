@@ -9,25 +9,31 @@ import { LeadsController } from "./leads.controller";
 import { LeadsService } from "./leads.service";
 import { ConversationsController } from "./conversations.controller";
 import { ConversationsService } from "./conversations.service";
-import { WhatsappSyncController } from "./whatsapp-sync.controller";
+import { WhatsappInstancesController } from "./whatsapp-instances.controller";
+import { WhatsappInstancesService } from "./whatsapp-instances.service";
 import { WhatsappSyncService } from "./whatsapp-sync.service";
+import { ContactsController } from "./contacts.controller";
+import { ContactsService } from "./contacts.service";
 
 @Module({
   controllers: [
     HealthController,
     TrackingController,
     ConversationsController,
-    WhatsappSyncController,
     EvolutionWebhookController,
     LeadsController,
+    WhatsappInstancesController,
+    ContactsController,
   ],
   providers: [
     PrismaService,
     TrackingService,
     EvolutionWebhookService,
     ConversationsService,
+    WhatsappInstancesService,
     WhatsappSyncService,
     LeadsService,
+    ContactsService,
   ],
 })
 export class AppModule {}
