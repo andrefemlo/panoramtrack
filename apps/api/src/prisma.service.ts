@@ -6,6 +6,9 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
+  leadTag: any;
+  leadTagAssignment: any;
+  leadNote: any;
   async onModuleInit() {
     await this.$connect();
   }
