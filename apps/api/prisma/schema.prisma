@@ -29,22 +29,22 @@ model Client {
 }
 
 model TrackingLink {
-  id                    String   @id @default(cuid())
-  clientId              String
-  slug                  String   @unique
-  name                  String
-  sourcePlatform        String?
-  campaignName          String?
-  campaignId            String?
-  adsetName             String?
-  adsetId               String?
-  adName                String?
-  adId                  String?
-  whatsappPhone         String
+  id                     String   @id @default(cuid())
+  clientId               String
+  slug                   String   @unique
+  name                   String
+  sourcePlatform         String?
+  campaignName           String?
+  campaignId             String?
+  adsetName              String?
+  adsetId                String?
+  adName                 String?
+  adId                   String?
+  whatsappPhone          String
   whatsappInitialMessage String
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   client           Client            @relation(fields: [clientId], references: [id])
   clickEvents      ClickEvent[]
@@ -52,10 +52,10 @@ model TrackingLink {
 }
 
 model ClickEvent {
-  id                       String   @id @default(cuid())
+  id                       String @id @default(cuid())
   clientId                 String
   trackingLinkId           String
-  clickCode                String   @unique
+  clickCode                String @unique
   destinationWhatsappPhone String
 
   utmSource   String?
@@ -126,13 +126,13 @@ model Lead {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  client           Client            @relation(fields: [clientId], references: [id])
+  client           Client              @relation(fields: [clientId], references: [id])
   attributions     LeadAttribution[]
   conversations    Conversation[]
   messages         Message[]
   stageHistory     LeadStageHistory[]
   conversionEvents ConversionEvent[]
-    notes          LeadNote[]
+  notes            LeadNote[]
   tagAssignments   LeadTagAssignment[]
 
   @@unique([clientId, phone])
@@ -143,7 +143,7 @@ model Lead {
 }
 
 model LeadAttribution {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   leadId         String
   clientId       String
   trackingLinkId String?
@@ -189,22 +189,22 @@ model LeadAttribution {
 }
 
 model Conversation {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   clientId           String
   leadId             String
   whatsappInstanceId String?
-  channel            String   @default("whatsapp")
+  channel            String    @default("whatsapp")
   externalChatId     String
   leadPhone          String
-  status             String   @default("open")
-  unreadCount        Int      @default(0)
+  status             String    @default("open")
+  unreadCount        Int       @default(0)
   readAt             DateTime?
   archivedAt         DateTime?
   pinnedAt           DateTime?
   assignedUserId     String?
   lastMessageAt      DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   client           Client            @relation(fields: [clientId], references: [id])
   lead             Lead              @relation(fields: [leadId], references: [id])
@@ -264,16 +264,16 @@ model WebhookPayloadSample {
 }
 
 model LeadStageHistory {
-  id          String   @id @default(cuid())
-  leadId      String
-  clientId    String
-  fromStage   String?
-  toStage     String
-  changedBy   String?
-  source      String   @default("api")
-  note        String?
-  changedAt   DateTime @default(now())
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  leadId    String
+  clientId  String
+  fromStage String?
+  toStage   String
+  changedBy String?
+  source    String   @default("api")
+  note      String?
+  changedAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
   lead   Lead   @relation(fields: [leadId], references: [id])
   client Client @relation(fields: [clientId], references: [id])
@@ -285,14 +285,14 @@ model LeadStageHistory {
 }
 
 model ConversionEvent {
-  id        String   @id @default(cuid())
-  clientId  String
-  leadId    String
-  eventName String
-  source    String   @default("crm")
-  payload   Json?
+  id         String   @id @default(cuid())
+  clientId   String
+  leadId     String
+  eventName  String
+  source     String   @default("crm")
+  payload    Json?
   occurredAt DateTime @default(now())
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   client Client @relation(fields: [clientId], references: [id])
   lead   Lead   @relation(fields: [leadId], references: [id])
@@ -338,10 +338,10 @@ model LeadTag {
 }
 
 model LeadTagAssignment {
-  id        String   @id @default(cuid())
-  clientId  String
-  leadId    String
-  tagId     String
+  id         String   @id @default(cuid())
+  clientId   String
+  leadId     String
+  tagId      String
   assignedAt DateTime @default(now())
 
   client Client  @relation(fields: [clientId], references: [id])

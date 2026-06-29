@@ -320,27 +320,27 @@ export class ContactsService {
       ]);
 
     const events = [
-      ...messages.map((message) => ({
+      ...messages.map((message: any) => ({
         type: "message",
         occurredAt: message.sentAt,
         data: message,
       })),
-      ...notes.map((note) => ({
+      ...notes.map((note: any) => ({
         type: "note",
         occurredAt: note.createdAt,
         data: note,
       })),
-      ...stages.map((stage) => ({
+      ...stages.map((stage: any) => ({
         type: "stage_change",
         occurredAt: stage.changedAt,
         data: stage,
       })),
-      ...attributions.map((attribution) => ({
+      ...attributions.map((attribution: any) => ({
         type: "attribution",
         occurredAt: attribution.attributedAt,
         data: attribution,
       })),
-      ...conversions.map((conversion) => ({
+      ...conversions.map((conversion: any) => ({
         type: "conversion_event",
         occurredAt: conversion.occurredAt,
         data: conversion,
