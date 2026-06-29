@@ -1,9 +1,49 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ConversationsService } from "./conversations.service";
 
 @Controller("conversations")
 export class ConversationsController {
   constructor(private readonly conversationsService: ConversationsService) {}
+
+  @Get()
+  async listConversations(
+    @Query("search") search?: string,
+    @Query("take") take?: string,
+    @Query("skip") skip?: string,
+    @Query("instanceName") instanceName?: string,
+    @Query("status") status?: string,
+  ) {
+    return this.conversationsService.listConversations({
+      search,
+      take: Number(take) || undefined,
+      skip: Number(skip) || undefined,
+      instanceName,
+      status,
+    });
+  }
+
+  @Get(":conversationId/messages")
+  async listConversationMessages(
+    @Param("conversationId") conversationId: string,
+    @Query("take") take?: string,
+    @Query("before") before?: string,
+  ) {
+    return this.conversationsService.listConversationMessages(conversationId, {
+      take: Number(take) || undefined,
+      before,
+    });
+  }
+
+  @Post(":conversationId/messages/text")
+  async sendConversationTextMessage(
+    @Param("conversationId") conversationId: string,
+    @Body() body: unknown,
+  ) {
+    return this.conversationsService.sendConversationTextMessage(
+      conversationId,
+      body && typeof body === "object" ? body : {},
+    );
+  }
 
   @Post("leads/:leadId/messages/text")
   async sendTextMessage(
@@ -12,6 +52,17 @@ export class ConversationsController {
   ) {
     return this.conversationsService.sendTextMessage(
       leadId,
+      body && typeof body === "object" ? body : {},
+    );
+  }
+
+  @Post(":conversationId/messages/media")
+  async sendConversationMediaMessage(
+    @Param("conversationId") conversationId: string,
+    @Body() body: unknown,
+  ) {
+    return this.conversationsService.sendConversationMediaMessage(
+      conversationId,
       body && typeof body === "object" ? body : {},
     );
   }

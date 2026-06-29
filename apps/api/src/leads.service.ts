@@ -720,11 +720,6 @@ export class LeadsService {
       externalChatId: {
         endsWith: "@s.whatsapp.net",
       },
-      whatsappInstance: {
-        is: {
-          status: "active",
-        },
-      },
     };
   }
 
