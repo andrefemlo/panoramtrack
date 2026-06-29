@@ -1,46 +1,72 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Panoram Tracking CRM</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main class="app-shell">
-      <header class="topbar">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panoram Tracking CRM</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">P</div>
         <div>
-          <p class="eyebrow">Panoram Tracking</p>
-          <h1>CRM</h1>
+          <strong>Panoram</strong>
+          <span>Tracking CRM</span>
         </div>
-
-        <section class="toolbar" aria-label="Controles do CRM">
-          <label class="search-box">
-            <span>Buscar</span>
-            <input id="searchInput" type="search" placeholder="Nome, telefone ou email" />
-          </label>
-          <button id="refreshButton" class="secondary-button" type="button">Atualizar</button>
-        </section>
-      </header>
-
-      <section id="metrics" class="metrics" aria-label="Resumo do funil"></section>
-
-      <section id="statusBanner" class="status-banner" hidden></section>
-
-      <section id="board" class="board" aria-label="Pipeline comercial"></section>
-    </main>
-
-    <aside id="leadPanel" class="lead-panel" aria-label="Detalhes do lead" aria-hidden="true">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Lead</p>
-          <h2 id="panelTitle">Selecionar lead</h2>
-        </div>
-        <button id="closePanelButton" class="icon-button" type="button" aria-label="Fechar painel">x</button>
       </div>
-      <div id="panelBody" class="panel-body"></div>
+
+      <nav class="sidebar-nav">
+        <button class="sidebar-link active" type="button">Pipeline</button>
+        <button class="sidebar-link" type="button">Conversas</button>
+        <button class="sidebar-link" type="button">Links rastreáveis</button>
+        <button class="sidebar-link" type="button">Atribuições</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span>Ambiente MVP</span>
+        <strong id="api-status">Conectando...</strong>
+      </div>
     </aside>
 
-    <script src="./app.js"></script>
-  </body>
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>Pipeline comercial</h1>
+          <p>Leads, conversas e atribuições das campanhas.</p>
+        </div>
+
+        <div class="topbar-actions">
+          <input id="search-input" class="search-input" type="search"
+            placeholder="Buscar lead, telefone ou e-mail..." />
+          <button id="refresh-button" class="primary-button" type="button">
+            Atualizar
+          </button>
+        </div>
+      </header>
+
+      <section class="content">
+        <section class="board-section">
+          <div id="board" class="pipeline-board">
+            <div class="loading">Carregando leads...</div>
+          </div>
+        </section>
+
+        <aside id="lead-panel" class="lead-panel hidden">
+          <div class="empty-panel">
+            Selecione um lead para ver detalhes.
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+
+  <script src="./app.js"></script>
+</body>
+
 </html>

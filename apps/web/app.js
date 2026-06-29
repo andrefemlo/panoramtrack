@@ -4,59 +4,26 @@ const API_BASE =
     ? "http://127.0.0.1:3001"
     : `${window.location.protocol}//${window.location.hostname}:3001`);
 
-const state = {
-  stages: [],
-  leads: [],
-  selectedLead: null,
-  search: "",
-  loading: false,
-};
+// const API_BASE_URL = "http://2.24.95.64:3001";
 
-const board = document.querySelector("#board");
-const metrics = document.querySelector("#metrics");
-const statusBanner = document.querySelector("#statusBanner");
-const searchInput = document.querySelector("#searchInput");
-const refreshButton = document.querySelector("#refreshButton");
-const leadPanel = document.querySelector("#leadPanel");
-const panelTitle = document.querySelector("#panelTitle");
-const panelBody = document.querySelector("#panelBody");
-const closePanelButton = document.querySelector("#closePanelButton");
+// const state = {
+//   leads: [],
+//   stages: [],
+//   selectedLeadId: null,
+//   selectedLead: null,
+//   search: "",
+//   loading: false,
+// };
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+const boardEl = document.getElementById("board");
+const leadPanelEl = document.getElementById("lead-panel");
+const refreshButtonEl = document.getElementById("refresh-button");
+const searchInputEl = document.getElementById("search-input");
+const apiStatusEl = document.getElementById("api-status");
+const modalRootEl = document.getElementById("modal-root");
 
-function formatDate(value) {
-  if (!value) return "-";
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-function setStatus(message, tone = "info") {
-  if (!message) {
-    statusBanner.hidden = true;
-    statusBanner.textContent = "";
-    return;
-  }
-
-  statusBanner.hidden = false;
-  statusBanner.textContent = message;
-  statusBanner.style.borderLeftColor =
-    tone === "error" ? "var(--danger)" : "var(--warning)";
-}
-
-async function apiFetch(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, {
+async function request(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -64,286 +31,607 @@ async function apiFetch(path, options = {}) {
     },
   });
 
+  const text = await response.text();
+
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `HTTP ${response.status}`);
+    throw new Error(text || `Erro HTTP ${response.status}`);
   }
 
-  return response.json();
+  return text ? JSON.parse(text) : null;
 }
 
-async function loadLeads() {
+async function checkHealth() {
+  try {
+    await request("/health");
+    apiStatusEl.textContent = "API online";
+  } catch (error) {
+    apiStatusEl.textContent = "API offline";
+  }
+}
+
+async function listLeads() {
+  const params = new URLSearchParams();
+
+  if (state.search) {
+    params.set("search", state.search);
+  }
+
+  const query = params.toString();
+  return request(`/leads${query ? `?${query}` : ""}`);
+}
+
+async function getLead(id) {
+  return request(`/leads/${id}`);
+}
+
+async function updateLeadStage(id, stage) {
+  return request(`/leads/${id}/stage`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      stage,
+      changedBy: "crm-ui",
+    }),
+  });
+}
+
+async function listAttributionCandidates(leadId, search = "") {
+  const params = new URLSearchParams();
+
+  params.set("sinceHours", "72");
+
+  if (search) {
+    params.set("search", search);
+  }
+
+  return request(`/leads/${leadId}/attribution-candidates?${params.toString()}`);
+}
+
+async function createManualAttribution(leadId, body) {
+  return request(`/leads/${leadId}/attributions/manual`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+async function refreshLeads() {
   state.loading = true;
   renderBoard();
-  setStatus("");
 
   try {
-    const params = new URLSearchParams({
-      take: "100",
-    });
-
-    if (state.search) {
-      params.set("search", state.search);
-    }
-
-    const data = await apiFetch(`/leads?${params.toString()}`);
-    state.stages = data.stages || [];
+    const data = await listLeads();
     state.leads = data.leads || [];
+    state.stages = data.stages || [];
+
+    if (state.selectedLeadId) {
+      await openLead(state.selectedLeadId, false);
+    }
   } catch (error) {
-    console.error(error);
-    setStatus("Nao foi possivel carregar os leads. Verifique se a API esta online.", "error");
+    boardEl.innerHTML = `<div class="error">Erro ao carregar leads: ${escapeHtml(
+      error.message,
+    )}</div>`;
   } finally {
     state.loading = false;
-    renderMetrics();
     renderBoard();
   }
 }
 
-function getLeadsByStage(stageSlug) {
-  return state.leads.filter((lead) => (lead.currentStage || "new_lead") === stageSlug);
+async function openLead(leadId, shouldRenderBoard = true) {
+  state.selectedLeadId = leadId;
+
+  if (shouldRenderBoard) {
+    renderBoard();
+  }
+
+  leadPanelEl.classList.remove("hidden");
+  leadPanelEl.innerHTML = `<div class="empty-panel">Carregando lead...</div>`;
+
+  try {
+    state.selectedLead = await getLead(leadId);
+    renderLeadPanel();
+  } catch (error) {
+    leadPanelEl.innerHTML = `<div class="empty-panel error">Erro ao carregar lead: ${escapeHtml(
+      error.message,
+    )}</div>`;
+  }
 }
 
-function renderMetrics() {
-  const total = state.leads.length;
-  const won = getLeadsByStage("won").length;
-  const qualified = getLeadsByStage("qualified").length;
+async function moveLead(leadId, stage) {
+  try {
+    await updateLeadStage(leadId, stage);
+    await refreshLeads();
+    await openLead(leadId, false);
+  } catch (error) {
+    alert(`Erro ao mover lead: ${error.message}`);
+  }
+}
 
-  const metricItems = [
-    ["Total", total],
-    ["Qualificados", qualified],
-    ["Vendas", won],
-    ["Novos", getLeadsByStage("new_lead").length],
-    ["Em atendimento", getLeadsByStage("in_progress").length],
-    ["Perdidos", getLeadsByStage("lost").length],
-  ];
-
-  metrics.innerHTML = metricItems
-    .map(
-      ([label, value]) => `
-        <article class="metric">
-          <strong>${value}</strong>
-          <span>${escapeHtml(label)}</span>
-        </article>
-      `,
-    )
-    .join("");
+function closeLeadPanel() {
+  state.selectedLeadId = null;
+  state.selectedLead = null;
+  leadPanelEl.classList.add("hidden");
+  leadPanelEl.innerHTML = `<div class="empty-panel">Selecione um lead para ver detalhes.</div>`;
+  renderBoard();
 }
 
 function renderBoard() {
-  if (state.loading && state.stages.length === 0) {
-    board.innerHTML = `<section class="column"><p class="empty-state">Carregando leads...</p></section>`;
+  if (state.loading) {
+    boardEl.innerHTML = `<div class="loading">Carregando leads...</div>`;
     return;
   }
 
-  const stages = state.stages.length
-    ? state.stages
-    : [
-        { slug: "new_lead", label: "Novo lead", order: 1 },
-        { slug: "in_progress", label: "Em atendimento", order: 2 },
-        { slug: "qualified", label: "Qualificado", order: 3 },
-        { slug: "proposal_sent", label: "Proposta enviada", order: 4 },
-        { slug: "won", label: "Venda realizada", order: 5 },
-        { slug: "lost", label: "Perdido", order: 6 },
-      ];
+  if (!state.stages.length) {
+    boardEl.innerHTML = `<div class="empty-state">Nenhuma etapa de pipeline encontrada.</div>`;
+    return;
+  }
 
-  board.innerHTML = stages
+  const columns = state.stages
     .map((stage) => {
-      const leads = getLeadsByStage(stage.slug);
-      const cards = leads.length
-        ? leads.map(renderLeadCard).join("")
-        : `<p class="empty-state">Sem leads neste estágio</p>`;
+      const leads = state.leads.filter((lead) => lead.currentStage === stage.slug);
 
       return `
-        <section class="column" data-stage="${escapeHtml(stage.slug)}">
+        <article class="pipeline-column">
           <header class="column-header">
-            <h2 class="column-title">${escapeHtml(stage.label)}</h2>
-            <span class="count-pill">${leads.length}</span>
+            <div class="column-title">
+              <strong>${escapeHtml(stage.label)}</strong>
+              <span>${leads.length} lead${leads.length === 1 ? "" : "s"}</span>
+            </div>
+            <span class="column-count">${leads.length}</span>
           </header>
-          <div class="lead-list">${cards}</div>
-        </section>
+
+          <div class="column-body">
+            ${leads.length
+          ? leads.map(renderLeadCard).join("")
+          : `<div class="empty-state">Sem leads nesta etapa.</div>`
+        }
+          </div>
+        </article>
       `;
     })
     .join("");
 
-  board.querySelectorAll(".lead-card").forEach((button) => {
-    button.addEventListener("click", () => openLead(button.dataset.leadId));
+  boardEl.innerHTML = columns;
+
+  document.querySelectorAll("[data-open-lead]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openLead(button.dataset.openLead);
+    });
   });
 }
 
 function renderLeadCard(lead) {
+  const isActive = lead.id === state.selectedLeadId;
   const attribution = lead.latestAttribution;
-  const campaign = attribution?.utmCampaign || attribution?.campaignName || "Sem campanha";
-  const message = lead.latestMessage?.body || lead.firstMessage || "Sem mensagem";
+  const campaign =
+    attribution?.utmCampaign ||
+    attribution?.campaignName ||
+    attribution?.utmSource ||
+    null;
 
   return `
-    <button class="lead-card" type="button" data-lead-id="${escapeHtml(lead.id)}">
-      <span class="lead-name">${escapeHtml(lead.name || lead.phone || "Lead sem nome")}</span>
-      <span class="lead-meta">
-        <span>${escapeHtml(lead.phone || "-")}</span>
-        <span>${formatDate(lead.updatedAt)}</span>
-      </span>
-      <span class="lead-source">
-        <span>${escapeHtml(campaign)}</span>
-        <span>${escapeHtml(attribution?.matchMethod || "sem atribuicao")}</span>
-      </span>
-      <span class="message-preview">${escapeHtml(message)}</span>
+    <button
+      class="lead-card ${isActive ? "active" : ""}"
+      type="button"
+      data-open-lead="${escapeAttribute(lead.id)}"
+    >
+      <div class="lead-card-top">
+        <div class="lead-card-title">
+          <strong>${escapeHtml(lead.name || lead.phone || "Lead sem nome")}</strong>
+          <span>${escapeHtml(lead.phone || "Sem telefone")}</span>
+        </div>
+
+        <span class="badge badge-neutral">${escapeHtml(lead.source || "lead")}</span>
+      </div>
+
+      <div class="latest-message">
+        ${escapeHtml(lead.latestMessage?.body || "Sem mensagem registrada.")}
+      </div>
+
+      <div class="badge-row">
+        ${attribution
+      ? `
+              <span class="badge badge-green">${escapeHtml(
+        attribution.matchMethod || "atribuído",
+      )}</span>
+              <span class="badge badge-blue">${escapeHtml(campaign || "campanha")}</span>
+            `
+      : `<span class="badge badge-amber">sem atribuição</span>`
+    }
+      </div>
     </button>
   `;
 }
 
-async function openLead(leadId) {
-  leadPanel.classList.add("open");
-  leadPanel.setAttribute("aria-hidden", "false");
-  panelTitle.textContent = "Carregando...";
-  panelBody.innerHTML = "";
+function renderLeadPanel() {
+  const lead = state.selectedLead;
 
-  try {
-    const lead = await apiFetch(`/leads/${encodeURIComponent(leadId)}`);
-    state.selectedLead = lead;
-    renderLeadPanel(lead);
-  } catch (error) {
-    console.error(error);
-    panelTitle.textContent = "Erro ao abrir lead";
-    panelBody.innerHTML = `<p class="status-banner">Nao foi possivel carregar o detalhe.</p>`;
+  if (!lead) {
+    return;
   }
-}
 
-function renderLeadPanel(lead) {
-  panelTitle.textContent = lead.name || lead.phone || "Lead sem nome";
-
-  const latestAttribution = lead.attributions?.[0];
-  const stageButtons = lead.stages
+  const currentStage = lead.currentStage || "new_lead";
+  const stagesOptions = state.stages
     .map(
       (stage) => `
-        <button
-          class="stage-button ${stage.slug === (lead.currentStage || "new_lead") ? "active" : ""}"
-          type="button"
-          data-stage="${escapeHtml(stage.slug)}"
-        >
+        <option value="${escapeAttribute(stage.slug)}" ${stage.slug === currentStage ? "selected" : ""
+        }>
           ${escapeHtml(stage.label)}
-        </button>
+        </option>
       `,
     )
     .join("");
 
-  const history = lead.stageHistory?.length
-    ? lead.stageHistory
-        .map(
-          (item) => `
-            <article class="timeline-item">
-              <p>${escapeHtml(item.fromStage || "new_lead")} -> ${escapeHtml(item.toStage)}</p>
-              <small>${formatDate(item.changedAt)}${item.note ? ` - ${escapeHtml(item.note)}` : ""}</small>
-            </article>
-          `,
-        )
-        .join("")
-    : `<p class="empty-state">Sem movimentacoes registradas</p>`;
+  leadPanelEl.innerHTML = `
+    <div class="panel-header">
+      <div class="panel-header-top">
+        <div class="truncate">
+          <h2>${escapeHtml(lead.name || lead.phone || "Lead sem nome")}</h2>
+          <p>${escapeHtml(lead.phone || "Sem telefone")}</p>
+        </div>
 
-  const messages = lead.messages?.slice(-5).reverse().length
-    ? lead.messages
-        .slice(-5)
-        .reverse()
-        .map(
-          (message) => `
-            <article class="timeline-item">
-              <p>${escapeHtml(message.body || "(mensagem sem texto)")}</p>
-              <small>${escapeHtml(message.direction)} - ${formatDate(message.sentAt)}</small>
-            </article>
-          `,
-        )
-        .join("")
-    : `<p class="empty-state">Sem mensagens</p>`;
+        <button id="close-panel-button" class="secondary-button" type="button">
+          Fechar
+        </button>
+      </div>
 
-  panelBody.innerHTML = `
-    <section class="detail-section">
-      <h3>Dados</h3>
-      <dl class="detail-grid">
-        <dt>Telefone</dt>
-        <dd>${escapeHtml(lead.phone || "-")}</dd>
-        <dt>Estagio</dt>
-        <dd>${escapeHtml(lead.currentStageLabel || "-")}</dd>
-        <dt>Origem</dt>
-        <dd>${escapeHtml(lead.source || "-")}</dd>
-        <dt>Criado</dt>
-        <dd>${formatDate(lead.createdAt)}</dd>
-      </dl>
-    </section>
+      <div class="field">
+        <label>Etapa do pipeline</label>
+        <select id="stage-select">
+          ${stagesOptions}
+        </select>
+      </div>
+    </div>
 
-    <section class="detail-section">
-      <h3>Pipeline</h3>
-      <div class="stage-actions">${stageButtons}</div>
-    </section>
+    <div class="panel-body">
+      <section class="panel-section">
+        <div class="panel-header-top">
+          <h3>Atribuição</h3>
+          <button id="manual-attribution-button" class="primary-button" type="button">
+            Atribuir
+          </button>
+        </div>
 
-    <section class="detail-section">
-      <h3>Atribuicao</h3>
-      <dl class="detail-grid">
-        <dt>Campanha</dt>
-        <dd>${escapeHtml(latestAttribution?.utmCampaign || latestAttribution?.campaignName || "-")}</dd>
-        <dt>Metodo</dt>
-        <dd>${escapeHtml(latestAttribution?.matchMethod || "-")}</dd>
-        <dt>Confianca</dt>
-        <dd>${escapeHtml(latestAttribution?.matchConfidence || "-")}</dd>
-        <dt>fbclid</dt>
-        <dd>${escapeHtml(latestAttribution?.fbclid || "-")}</dd>
-      </dl>
-    </section>
+        ${renderAttributions(lead.attributions || [])}
+      </section>
 
-    <section class="detail-section">
-      <h3>Historico de estagio</h3>
-      <div class="timeline">${history}</div>
-    </section>
+      <section class="panel-section">
+        <h3>Conversas</h3>
+        ${renderConversations(lead.conversations || [])}
+      </section>
 
-    <section class="detail-section">
-      <h3>Mensagens recentes</h3>
-      <div class="timeline">${messages}</div>
-    </section>
+      <section class="panel-section">
+        <h3>Mensagens</h3>
+        ${renderMessages(lead.messages || [])}
+      </section>
+
+      <section class="panel-section">
+        <h3>Histórico</h3>
+        ${renderStageHistory(lead.stageHistory || [])}
+      </section>
+    </div>
   `;
 
-  panelBody.querySelectorAll(".stage-button").forEach((button) => {
-    button.addEventListener("click", () => updateStage(lead.id, button.dataset.stage));
+  document.getElementById("close-panel-button").addEventListener("click", closeLeadPanel);
+
+  document.getElementById("stage-select").addEventListener("change", (event) => {
+    moveLead(lead.id, event.target.value);
   });
+
+  document
+    .getElementById("manual-attribution-button")
+    .addEventListener("click", () => {
+      openManualAttributionModal(lead);
+    });
 }
 
-async function updateStage(leadId, stage) {
+function renderAttributions(attributions) {
+  if (!attributions.length) {
+    return `<div class="empty-state">Nenhuma atribuição encontrada.</div>`;
+  }
+
+  return attributions
+    .map((attr) => {
+      const campaign =
+        attr.utmCampaign || attr.campaignName || attr.utmSource || "Sem campanha";
+
+      return `
+        <div class="attribution-card">
+          <div class="badge-row">
+            <span class="badge badge-green">${escapeHtml(attr.matchMethod || "unknown")}</span>
+            <span class="badge badge-blue">${escapeHtml(
+        attr.matchConfidence || "unknown",
+      )}</span>
+          </div>
+
+          <p class="truncate"><strong>${escapeHtml(campaign)}</strong></p>
+          <p class="truncate">Origem: ${escapeHtml(
+        attr.sourcePlatform || attr.utmSource || "não informada",
+      )}</p>
+          ${attr.fbclid
+          ? `<p class="truncate">fbclid: ${escapeHtml(attr.fbclid)}</p>`
+          : ""
+        }
+          ${attr.gclid
+          ? `<p class="truncate">gclid: ${escapeHtml(attr.gclid)}</p>`
+          : ""
+        }
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderConversations(conversations) {
+  if (!conversations.length) {
+    return `<div class="empty-state">Nenhuma conversa encontrada.</div>`;
+  }
+
+  return conversations
+    .map(
+      (conversation) => `
+        <div class="history-card">
+          <strong>${escapeHtml(conversation.channel || "whatsapp")}</strong>
+          <p class="truncate">Chat: ${escapeHtml(conversation.externalChatId || "-")}</p>
+          <p>Status: ${escapeHtml(conversation.status || "-")}</p>
+          <p>Última mensagem: ${formatDate(conversation.lastMessageAt)}</p>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+function renderMessages(messages) {
+  if (!messages.length) {
+    return `<div class="empty-state">Nenhuma mensagem encontrada.</div>`;
+  }
+
+  return `
+    <div class="chat">
+      ${messages
+      .map(
+        (message) => `
+            <div class="message ${message.direction === "outbound" ? "outbound" : "inbound"}">
+              <div>${escapeHtml(message.body || "Mensagem sem texto")}</div>
+              <div class="message-time">${formatDate(message.sentAt)}</div>
+            </div>
+          `,
+      )
+      .join("")}
+    </div>
+  `;
+}
+
+function renderStageHistory(history) {
+  if (!history.length) {
+    return `<div class="empty-state">Nenhuma mudança de etapa registrada.</div>`;
+  }
+
+  return history
+    .map(
+      (item) => `
+        <div class="history-card">
+          <strong>${escapeHtml(item.fromStage || "início")} → ${escapeHtml(
+        item.toStage,
+      )}</strong>
+          <p>${formatDate(item.changedAt)}</p>
+          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
+        </div>
+      `,
+    )
+    .join("");
+}
+
+async function openManualAttributionModal(lead) {
+  modalRootEl.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal">
+        <header class="modal-header">
+          <div>
+            <h3>Atribuição manual</h3>
+            <p>${escapeHtml(lead.name || lead.phone || "Lead")}</p>
+          </div>
+
+          <button id="close-modal-button" class="secondary-button" type="button">
+            Fechar
+          </button>
+        </header>
+
+        <div class="modal-body">
+          <section>
+            <h3>Cliques candidatos</h3>
+
+            <div class="field">
+              <label>Buscar por campanha, clickCode, fbclid ou gclid</label>
+              <input id="candidate-search-input" placeholder="Ex: campanha, 64990DE8, fbclid..." />
+            </div>
+
+            <button id="candidate-search-button" class="primary-button" type="button">
+              Buscar cliques
+            </button>
+
+            <div id="candidate-list" class="candidate-list">
+              <div class="loading">Carregando candidatos...</div>
+            </div>
+          </section>
+
+          <section>
+            <h3>Atribuição sem clique</h3>
+
+            <div class="form-grid">
+              <div class="field">
+                <label>Origem/plataforma</label>
+                <input id="manual-source-input" value="manual" placeholder="meta, google, direct..." />
+              </div>
+
+              <div class="field">
+                <label>Campanha</label>
+                <input id="manual-campaign-input" placeholder="Nome da campanha" />
+              </div>
+
+              <div class="field">
+                <label>UTM source</label>
+                <input id="manual-utm-source-input" placeholder="meta, google..." />
+              </div>
+
+              <div class="field">
+                <label>UTM campaign</label>
+                <input id="manual-utm-campaign-input" placeholder="campanha_x" />
+              </div>
+
+              <button id="save-manual-only-button" class="primary-button" type="button">
+                Salvar atribuição manual
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModalButton = document.getElementById("close-modal-button");
+  const searchButton = document.getElementById("candidate-search-button");
+  const saveManualOnlyButton = document.getElementById("save-manual-only-button");
+
+  closeModalButton.addEventListener("click", closeModal);
+  searchButton.addEventListener("click", () => loadCandidates(lead.id));
+  saveManualOnlyButton.addEventListener("click", () => saveManualOnly(lead.id));
+
+  await loadCandidates(lead.id);
+}
+
+function closeModal() {
+  modalRootEl.innerHTML = "";
+}
+
+async function loadCandidates(leadId) {
+  const listEl = document.getElementById("candidate-list");
+  const searchEl = document.getElementById("candidate-search-input");
+  const search = searchEl ? searchEl.value.trim() : "";
+
+  listEl.innerHTML = `<div class="loading">Carregando candidatos...</div>`;
+
   try {
-    const updated = await apiFetch(`/leads/${encodeURIComponent(leadId)}/stage`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        stage,
-        changedBy: "web",
-      }),
+    const data = await listAttributionCandidates(leadId, search);
+    const candidates = data.candidates || [];
+
+    if (!candidates.length) {
+      listEl.innerHTML = `<div class="empty-state">Nenhum clique candidato encontrado.</div>`;
+      return;
+    }
+
+    listEl.innerHTML = candidates.map(renderCandidateCard).join("");
+
+    document.querySelectorAll("[data-select-candidate]").forEach((button) => {
+      button.addEventListener("click", () => {
+        saveCandidateAttribution(leadId, button.dataset.selectCandidate);
+      });
+    });
+  } catch (error) {
+    listEl.innerHTML = `<div class="error">Erro ao carregar candidatos: ${escapeHtml(
+      error.message,
+    )}</div>`;
+  }
+}
+
+function renderCandidateCard(candidate) {
+  const campaign =
+    candidate.utmCampaign ||
+    candidate.trackingLink?.campaignName ||
+    candidate.trackingLink?.name ||
+    candidate.clickCode;
+
+  return `
+    <button
+      class="candidate-card"
+      type="button"
+      data-select-candidate="${escapeAttribute(candidate.clickEventId)}"
+    >
+      <strong class="truncate">${escapeHtml(campaign || "Clique sem campanha")}</strong>
+      <p class="truncate">Código: ${escapeHtml(candidate.clickCode || "-")}</p>
+      <p class="truncate">Origem: ${escapeHtml(candidate.utmSource || "-")}</p>
+      <p class="truncate">fbclid: ${escapeHtml(candidate.fbclid || "-")}</p>
+      <p>${formatDate(candidate.clickedAt)}</p>
+    </button>
+  `;
+}
+
+async function saveCandidateAttribution(leadId, clickEventId) {
+  try {
+    await createManualAttribution(leadId, {
+      clickEventId,
     });
 
-    await loadLeads();
-    await openLead(updated.lead.id);
+    closeModal();
+    await refreshLeads();
+    await openLead(leadId, false);
   } catch (error) {
-    console.error(error);
-    setStatus("Nao foi possivel mover o lead.", "error");
+    alert(`Erro ao atribuir clique: ${error.message}`);
   }
 }
 
-function closePanel() {
-  leadPanel.classList.remove("open");
-  leadPanel.setAttribute("aria-hidden", "true");
-  state.selectedLead = null;
+async function saveManualOnly(leadId) {
+  const sourcePlatform = document.getElementById("manual-source-input").value.trim();
+  const campaignName = document.getElementById("manual-campaign-input").value.trim();
+  const utmSource = document.getElementById("manual-utm-source-input").value.trim();
+  const utmCampaign = document.getElementById("manual-utm-campaign-input").value.trim();
+
+  if (!campaignName && !utmCampaign) {
+    alert("Informe pelo menos o nome da campanha ou UTM campaign.");
+    return;
+  }
+
+  try {
+    await createManualAttribution(leadId, {
+      sourcePlatform,
+      campaignName,
+      utmSource: utmSource || sourcePlatform,
+      utmCampaign: utmCampaign || campaignName,
+    });
+
+    closeModal();
+    await refreshLeads();
+    await openLead(leadId, false);
+  } catch (error) {
+    alert(`Erro ao salvar atribuição manual: ${error.message}`);
+  }
 }
 
-let searchTimer = null;
-searchInput.addEventListener("input", () => {
-  window.clearTimeout(searchTimer);
-  searchTimer = window.setTimeout(() => {
-    state.search = searchInput.value.trim();
-    loadLeads();
-  }, 250);
-});
-
-refreshButton.addEventListener("click", loadLeads);
-closePanelButton.addEventListener("click", closePanel);
-
-window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    closePanel();
+function escapeHtml(value) {
+  if (value === null || value === undefined) {
+    return "";
   }
+
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+
+  try {
+    return new Date(value).toLocaleString("pt-BR");
+  } catch {
+    return "-";
+  }
+}
+
+refreshButtonEl.addEventListener("click", refreshLeads);
+
+searchInputEl.addEventListener("input", () => {
+  state.search = searchInputEl.value.trim();
+
+  clearTimeout(window.__searchTimeout);
+  window.__searchTimeout = setTimeout(refreshLeads, 350);
 });
 
-loadLeads();
+checkHealth();
+refreshLeads();
