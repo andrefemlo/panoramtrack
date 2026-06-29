@@ -28,6 +28,21 @@ export class EvolutionWebhookService {
     const fromMe = this.extractFromMe(data);
     const sentAt = this.extractSentAt(data);
 
+    if (!this.isIndividualContactChat(externalChatId)) {
+      return {
+        status: "ignored",
+        reason: "non_contact_chat",
+        externalChatId,
+      };
+    }
+
+    if (!leadPhone || !externalChatId) {
+      return {
+        status: "ignored",
+        reason: "missing_lead_phone_or_chat_id",
+      };
+    }
+
     await this.capturePayloadSample({
       payload: data,
       instanceName,
@@ -59,26 +74,33 @@ export class EvolutionWebhookService {
       },
     });
 
-    const lead = await this.prisma.lead.upsert({
+    const existingLead = await this.prisma.lead.findUnique({
       where: {
         clientId_phone: {
           clientId: client.id,
           phone: leadPhone,
         },
       },
-      update: {
-        name: pushName || undefined,
-      },
-      create: {
-        clientId: client.id,
-        name: pushName || null,
-        phone: leadPhone,
-        source: "whatsapp",
-        firstMessage: messageText || null,
-        status: "new",
-        currentStage: "new_lead",
-      },
     });
+
+    const lead = existingLead
+      ? await this.prisma.lead.update({
+          where: {
+            id: existingLead.id,
+          },
+          data: {},
+        })
+      : await this.prisma.lead.create({
+          data: {
+            clientId: client.id,
+            name: pushName || null,
+            phone: leadPhone,
+            source: "whatsapp",
+            firstMessage: messageText || null,
+            status: "new",
+            currentStage: "new_lead",
+          },
+        });
 
     const conversation = await this.prisma.conversation.upsert({
       where: {
@@ -501,7 +523,9 @@ export class EvolutionWebhookService {
           instanceName: params.instanceName,
           externalMessageId: params.externalMessageId,
           fromMe: params.fromMe,
-          payload: this.sanitizePayload(params.payload) as Prisma.InputJsonValue,
+          payload: this.sanitizePayload(
+            params.payload,
+          ) as Prisma.InputJsonValue,
         },
       });
     } catch (error) {
@@ -599,5 +623,31 @@ export class EvolutionWebhookService {
     }
 
     return `${"*".repeat(phone.length - 4)}${phone.slice(-4)}`;
+  }
+
+  private isIndividualContactChat(chatId: string | null): boolean {
+    if (!chatId) {
+      return false;
+    }
+
+    const normalized = chatId.toLowerCase();
+
+    if (normalized === "status@broadcast") {
+      return false;
+    }
+
+    if (normalized.endsWith("@g.us")) {
+      return false;
+    }
+
+    if (normalized.endsWith("@newsletter")) {
+      return false;
+    }
+
+    if (normalized.endsWith("@broadcast")) {
+      return false;
+    }
+
+    return normalized.endsWith("@s.whatsapp.net");
   }
 }

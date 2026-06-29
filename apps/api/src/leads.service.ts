@@ -31,6 +31,13 @@ export class LeadsService {
 
     const where: Prisma.LeadWhereInput = {
       clientId: client.id,
+      conversations: {
+        some: {
+          externalChatId: {
+            endsWith: "@s.whatsapp.net",
+          },
+        },
+      },
       ...(query.stage ? this.buildStageFilter(query.stage) : {}),
       ...(query.search
         ? {
@@ -92,6 +99,13 @@ export class LeadsService {
       where: {
         id: leadId,
         clientId: client.id,
+        conversations: {
+          some: {
+            externalChatId: {
+              endsWith: "@s.whatsapp.net",
+            },
+          },
+        },
       },
       include: {
         attributions: {

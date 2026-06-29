@@ -148,7 +148,12 @@ async function refreshLeads() {
 }
 
 function normalizeLeadsResponse(data) {
-  const leads = Array.isArray(data) ? data : data?.leads || [];
+  const rawLeads = Array.isArray(data) ? data : data?.leads || [];
+
+  const leads = rawLeads.filter((lead) => {
+    const chatId = lead.latestConversation?.externalChatId || "";
+    return chatId.toLowerCase().endsWith("@s.whatsapp.net");
+  });
 
   let stages = Array.isArray(data?.stages) && data.stages.length
     ? data.stages
