@@ -217,6 +217,9 @@ model Message {
   direction         String
   messageType       String   @default("text")
   body              String?
+  mediaUrl      String?
+  mediaMimeType String?
+  mediaFileName String?
   fromPhone         String?
   toPhone           String?
   sentAt            DateTime @default(now())

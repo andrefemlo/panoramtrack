@@ -7,11 +7,14 @@ import { EvolutionWebhookController } from "./evolution-webhook.controller";
 import { EvolutionWebhookService } from "./evolution-webhook.service";
 import { LeadsController } from "./leads.controller";
 import { LeadsService } from "./leads.service";
+import { ConversationsController } from "./conversations.controller";
+import { ConversationsService } from "./conversations.service";
 
 @Module({
   controllers: [
     HealthController,
     TrackingController,
+    ConversationsController,
     EvolutionWebhookController,
     LeadsController,
   ],
@@ -19,6 +22,7 @@ import { LeadsService } from "./leads.service";
     PrismaService,
     TrackingService,
     EvolutionWebhookService,
+    ConversationsService,
     LeadsService,
   ],
 })

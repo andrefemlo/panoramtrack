@@ -59,6 +59,22 @@ async function checkHealth() {
   }
 }
 
+async function sendConversationText(leadId, text) {
+  return request(`/conversations/leads/${leadId}/messages/text`, {
+    method: "POST",
+    body: JSON.stringify({
+      text,
+    }),
+  });
+}
+
+async function sendConversationMedia(leadId, body) {
+  return request(`/conversations/leads/${leadId}/messages/media`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 async function listLeads() {
   const params = new URLSearchParams();
 
@@ -309,7 +325,7 @@ function renderPipelineView() {
 }
 
 function renderConversationsView() {
-  boardEl.className = "list-view";
+  boardEl.className = "conversation-app-view";
 
   const conversations = [...state.leads]
     .filter((lead) => lead.latestConversation || lead.latestMessage)
@@ -336,48 +352,286 @@ function renderConversationsView() {
     return;
   }
 
+  const selectedLead =
+    state.selectedLead ||
+    conversations.find((lead) => lead.id === state.selectedLeadId) ||
+    conversations[0];
+
+  if (!state.selectedLeadId) {
+    state.selectedLeadId = selectedLead.id;
+    openLead(selectedLead.id, false);
+  }
+
   boardEl.innerHTML = `
-    <div class="conversation-list">
-      ${conversations
+    <aside class="conversation-sidebar">
+      <div class="conversation-sidebar-header">
+        <strong>Conversas</strong>
+        <span>${conversations.length} conversas</span>
+      </div>
+
+      <div class="conversation-thread-list">
+        ${conversations
       .map((lead) => {
         const message = lead.latestMessage;
         const conversation = lead.latestConversation;
+        const isActive = lead.id === state.selectedLeadId;
 
         return `
-            <button
-              class="conversation-card ${lead.id === state.selectedLeadId ? "active" : ""}"
-              type="button"
-              data-open-lead="${escapeAttribute(lead.id)}"
-            >
-              <div class="conversation-main">
+              <button
+                class="conversation-thread ${isActive ? "active" : ""}"
+                type="button"
+                data-open-conversation="${escapeAttribute(lead.id)}"
+              >
                 <div class="avatar">${escapeHtml(getInitials(lead.name || lead.phone))}</div>
 
-                <div class="conversation-content">
-                  <div class="conversation-row">
-                    <strong class="truncate">${escapeHtml(
-          lead.name || lead.phone || "Contato sem nome",
-        )}</strong>
+                <div class="conversation-thread-content">
+                  <div class="conversation-thread-top">
+                    <strong>${escapeHtml(lead.name || lead.phone || "Contato")}</strong>
                     <span>${formatDate(
           conversation?.lastMessageAt || message?.sentAt || lead.updatedAt,
         )}</span>
                   </div>
 
-                  <div class="conversation-row muted">
-                    <span class="truncate">${escapeHtml(lead.phone || "-")}</span>
-                    <span>${escapeHtml(conversation?.channel || "whatsapp")}</span>
+                  <div class="conversation-thread-phone">
+                    ${escapeHtml(formatPhoneLabel(lead))}
                   </div>
 
-                  <p>${escapeHtml(message?.body || "Mensagem sem texto")}</p>
+                  <p>${escapeHtml(message?.body || getMessageTypeLabel(message))}</p>
                 </div>
-              </div>
-            </button>
-          `;
+              </button>
+            `;
       })
       .join("")}
-    </div>
+      </div>
+    </aside>
+
+    <section id="conversation-chat" class="conversation-chat">
+      <div class="chat-empty">Carregando conversa...</div>
+    </section>
   `;
 
-  bindOpenLeadButtons();
+  document.querySelectorAll("[data-open-conversation]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await openConversation(button.dataset.openConversation);
+    });
+  });
+
+  renderConversationChat();
+}
+
+async function openConversation(leadId) {
+  state.selectedLeadId = leadId;
+
+  await openLead(leadId, false);
+
+  renderConversationsView();
+}
+
+function renderConversationChat() {
+  const chatEl = document.getElementById("conversation-chat");
+
+  if (!chatEl) {
+    return;
+  }
+
+  const lead = state.selectedLead;
+
+  if (!lead) {
+    chatEl.innerHTML = `<div class="chat-empty">Selecione uma conversa.</div>`;
+    return;
+  }
+
+  const messages = lead.messages || [];
+
+  chatEl.innerHTML = `
+    <header class="chat-header">
+      <div class="avatar">${escapeHtml(getInitials(lead.name || lead.phone))}</div>
+
+      <div class="chat-contact">
+        <strong>${escapeHtml(lead.name || lead.phone || "Contato")}</strong>
+        <span>${escapeHtml(formatPhoneLabel(lead))}</span>
+      </div>
+
+      <button class="secondary-button" type="button" id="open-lead-info-button">
+        Ver lead
+      </button>
+    </header>
+
+    <div class="chat-messages" id="chat-messages">
+      ${messages.length
+      ? messages.map(renderChatMessage).join("")
+      : `<div class="chat-empty">Nenhuma mensagem nesta conversa.</div>`
+    }
+    </div>
+
+    <footer class="chat-composer">
+      <input
+        id="media-input"
+        type="file"
+        accept="image/*,audio/*"
+        hidden
+      />
+
+      <button id="attach-media-button" class="secondary-button" type="button">
+        Anexar
+      </button>
+
+      <input
+        id="chat-text-input"
+        class="chat-text-input"
+        type="text"
+        placeholder="Digite uma mensagem..."
+      />
+
+      <button id="send-message-button" class="primary-button" type="button">
+        Enviar
+      </button>
+    </footer>
+  `;
+
+  document.getElementById("open-lead-info-button").addEventListener("click", () => {
+    leadPanelEl.classList.remove("hidden");
+    renderLeadPanel();
+  });
+
+  document.getElementById("send-message-button").addEventListener("click", () => {
+    sendTextFromComposer(lead.id);
+  });
+
+  document.getElementById("chat-text-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      sendTextFromComposer(lead.id);
+    }
+  });
+
+  document.getElementById("attach-media-button").addEventListener("click", () => {
+    document.getElementById("media-input").click();
+  });
+
+  document.getElementById("media-input").addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+
+    if (file) {
+      sendMediaFromComposer(lead.id, file);
+    }
+  });
+
+  const messagesEl = document.getElementById("chat-messages");
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function renderChatMessage(message) {
+  const direction = message.direction === "outbound" ? "outbound" : "inbound";
+  const type = message.messageType || "text";
+
+  let content = "";
+
+  if (type === "image" && message.mediaUrl) {
+    content = `
+      <img class="chat-image" src="${escapeAttribute(message.mediaUrl)}" alt="Imagem enviada" />
+      ${message.body ? `<div>${escapeHtml(message.body)}</div>` : ""}
+    `;
+  } else if (type === "audio" && message.mediaUrl) {
+    content = `
+      <audio class="chat-audio" controls src="${escapeAttribute(message.mediaUrl)}"></audio>
+      ${message.body ? `<div>${escapeHtml(message.body)}</div>` : ""}
+    `;
+  } else if (type === "image") {
+    content = `<div>Imagem recebida${message.body ? `: ${escapeHtml(message.body)}` : ""}</div>`;
+  } else if (type === "audio") {
+    content = `<div>Áudio recebido${message.body ? `: ${escapeHtml(message.body)}` : ""}</div>`;
+  } else {
+    content = `<div>${escapeHtml(message.body || "Mensagem sem texto")}</div>`;
+  }
+
+  return `
+    <div class="chat-message-row ${direction}">
+      <div class="chat-bubble ${direction}">
+        ${content}
+        <div class="message-time">${formatDate(message.sentAt)}</div>
+      </div>
+    </div>
+  `;
+}
+
+async function sendTextFromComposer(leadId) {
+  const input = document.getElementById("chat-text-input");
+  const text = input.value.trim();
+
+  if (!text) {
+    return;
+  }
+
+  input.disabled = true;
+
+  try {
+    await sendConversationText(leadId, text);
+    input.value = "";
+    await openLead(leadId, false);
+    renderConversationChat();
+    await refreshLeads();
+  } catch (error) {
+    alert(`Erro ao enviar mensagem: ${error.message}`);
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+async function sendMediaFromComposer(leadId, file) {
+  const allowed = file.type.startsWith("image/") || file.type.startsWith("audio/");
+
+  if (!allowed) {
+    alert("Envie apenas imagem ou áudio.");
+    return;
+  }
+
+  try {
+    const mediaBase64 = await fileToBase64(file);
+
+    await sendConversationMedia(leadId, {
+      mediaBase64,
+      mimeType: file.type,
+      fileName: file.name,
+      mediaType: file.type.startsWith("audio/") ? "audio" : "image",
+    });
+
+    await openLead(leadId, false);
+    renderConversationChat();
+    await refreshLeads();
+  } catch (error) {
+    alert(`Erro ao enviar mídia: ${error.message}`);
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function getMessageTypeLabel(message) {
+  if (!message) return "Sem mensagem";
+
+  if (message.messageType === "image") return "Imagem";
+  if (message.messageType === "audio") return "Áudio";
+
+  return "Mensagem sem texto";
+}
+
+function formatPhoneLabel(lead) {
+  const phone = lead.phone || "-";
+  const chatId = lead.latestConversation?.externalChatId || "";
+
+  if (chatId.endsWith("@g.us")) {
+    return `${phone} · grupo`;
+  }
+
+  return phone;
 }
 
 function renderContactsView() {
@@ -536,6 +790,9 @@ function renderLeadPanel() {
           <button id="manual-attribution-button" class="primary-button" type="button">
             Atribuir
           </button>
+          <button id="open-conversation-button" class="secondary-button" type="button">
+            Abrir conversa
+          </button>
         </div>
 
         ${renderAttributions(lead.attributions || [])}
@@ -569,6 +826,11 @@ function renderLeadPanel() {
     .addEventListener("click", () => {
       openManualAttributionModal(lead);
     });
+
+  document.getElementById("open-conversation-button").addEventListener("click", async () => {
+    setView("conversations");
+    await openConversation(lead.id);
+  });
 }
 
 function renderAttributions(attributions) {
