@@ -795,5 +795,46 @@ createApp({
         return message;
       }
     },
+    normalizedAudioSrc(message) {
+      const mediaUrl = message?.mediaUrl || "";
+
+      if (!mediaUrl) {
+        return "";
+      }
+
+      return mediaUrl
+        .replace("data:audio/ogg; codecs=opus;base64,", "data:audio/ogg;base64,")
+        .replace("data:audio/ogg;codecs=opus;base64,", "data:audio/ogg;base64,");
+    },
+
+    normalizedAudioMimeType(message) {
+      const mimeType = message?.mediaMimeType || "";
+
+      if (mimeType.includes("ogg")) {
+        return "audio/ogg";
+      }
+
+      if (mimeType.includes("opus")) {
+        return "audio/ogg";
+      }
+
+      if (mimeType.includes("mpeg")) {
+        return "audio/mpeg";
+      }
+
+      if (mimeType.includes("mp3")) {
+        return "audio/mpeg";
+      }
+
+      if (mimeType.includes("mp4")) {
+        return "audio/mp4";
+      }
+
+      if (mimeType.includes("aac")) {
+        return "audio/aac";
+      }
+
+      return mimeType || "audio/ogg";
+    },
   },
 }).mount("#app");

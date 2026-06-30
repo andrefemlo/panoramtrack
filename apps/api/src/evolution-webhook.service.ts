@@ -1,3 +1,8 @@
+import {
+  isIndividualContactChat,
+  isMessageEvent,
+  normalizeEvolutionWebhook,
+} from "./evolution-webhook.normalizer";
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "./prisma.service";
@@ -6,8 +11,9 @@ import { PrismaService } from "./prisma.service";
 export class EvolutionWebhookService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async handleWebhook(payload: unknown) {
+  async handleWebhook(payload: unknown, eventFromPath?: string) {
     const data = payload as any;
+    const normalized = normalizeEvolutionWebhook(payload, eventFromPath);
 
     const client = await this.prisma.client.upsert({
       where: { slug: "panoram-demo" },
@@ -18,20 +24,40 @@ export class EvolutionWebhookService {
       },
     });
 
-    const instanceName = this.extractInstanceName(data);
-    const instancePhone = this.extractInstancePhone(data);
-    const externalChatId = this.extractChatId(data);
-    const leadPhone = this.extractLeadPhone(data);
-    const messageNode = this.extractMessageNode(data);
-    const messageType = this.extractMessageType(messageNode, data);
-    const media = this.extractMediaFields(messageNode, data, messageType);
-    const messageText = this.extractMessageText(data, messageNode);
-    const externalMessageId = this.extractMessageId(data);
-    const pushName = this.extractPushName(data);
-    const fromMe = this.extractFromMe(data);
-    const sentAt = this.extractSentAt(data);
+    if (!isMessageEvent(normalized.event)) {
+      await this.capturePayloadSample({
+        payload: data,
+        instanceName: normalized.instanceName,
+        externalMessageId: normalized.externalMessageId || "no_message_id",
+        fromMe: normalized.fromMe,
+      });
 
-    if (!this.isIndividualContactChat(externalChatId)) {
+      return {
+        status: "ignored",
+        reason: "event_not_handled_yet",
+        event: normalized.event,
+      };
+    }
+
+    const instanceName = normalized.instanceName;
+    const instancePhone = normalized.instancePhone;
+    const externalChatId = normalized.externalChatId;
+    const leadPhone = normalized.leadPhone;
+    const messageType = normalized.messageType;
+    const media = {
+      mediaUrl: normalized.mediaUrl,
+      mediaMimeType: normalized.mediaMimeType,
+      mediaFileName: normalized.mediaFileName,
+    };
+    const messageText = normalized.body;
+    const externalMessageId =
+      normalized.externalMessageId ||
+      `generated_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const pushName = normalized.pushName;
+    const fromMe = normalized.fromMe;
+    const sentAt = normalized.sentAt;
+
+    if (!isIndividualContactChat(externalChatId)) {
       return {
         status: "ignored",
         reason: "non_contact_chat",
@@ -101,7 +127,12 @@ export class EvolutionWebhookService {
             id: existingLead.id,
           },
           data:
-            contactName && existingLead.name !== contactName
+            contactName &&
+            this.shouldUpdateLeadName(
+              existingLead.name,
+              existingLead.phone,
+              contactName,
+            )
               ? {
                   name: contactName,
                 }
@@ -540,7 +571,11 @@ export class EvolutionWebhookService {
     return "text";
   }
 
-  private extractMediaFields(messageNode: any, payload: any, messageType: string) {
+  private extractMediaFields(
+    messageNode: any,
+    payload: any,
+    messageType: string,
+  ) {
     const mediaNode = this.mediaNodeForType(messageNode, messageType);
 
     return {
@@ -582,7 +617,10 @@ export class EvolutionWebhookService {
     return null;
   }
 
-  private extractMessageText(payload: any, messageNode = this.extractMessageNode(payload)): string | null {
+  private extractMessageText(
+    payload: any,
+    messageNode = this.extractMessageNode(payload),
+  ): string | null {
     return (
       this.optionalString(
         messageNode?.conversation ||
@@ -817,5 +855,48 @@ export class EvolutionWebhookService {
     const trimmed = value.trim();
 
     return trimmed || null;
+  }
+
+  private shouldUpdateLeadName(
+    currentName: string | null,
+    leadPhone: string,
+    incomingName: string,
+  ): boolean {
+    const current = currentName?.trim();
+    const incoming = incomingName.trim();
+
+    if (!incoming) {
+      return false;
+    }
+
+    const normalizedIncoming = incoming.replace(/\D/g, "");
+    const normalizedPhone = leadPhone.replace(/\D/g, "");
+    const normalizedCurrent = current?.replace(/\D/g, "") || "";
+
+    if (normalizedIncoming && normalizedIncoming === normalizedPhone) {
+      return false;
+    }
+
+    if (incoming.includes("@s.whatsapp.net")) {
+      return false;
+    }
+
+    if (/^\+?\d{8,15}$/.test(incoming.replace(/\s/g, ""))) {
+      return false;
+    }
+
+    if (!current) {
+      return true;
+    }
+
+    if (normalizedCurrent && normalizedCurrent === normalizedPhone) {
+      return true;
+    }
+
+    if (/^\+?\d{8,15}$/.test(current.replace(/\s/g, ""))) {
+      return true;
+    }
+
+    return false;
   }
 }

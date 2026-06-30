@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  Param,
   Post,
   Query,
   UnauthorizedException,
@@ -23,6 +24,17 @@ export class EvolutionWebhookController {
     this.validateWebhookSecret(webhookSecret);
 
     return this.evolutionWebhookService.handleWebhook(body);
+  }
+
+  @Post(":event")
+  async handleWebhookByEvent(
+    @Param("event") event: string,
+    @Body() body: unknown,
+    @Headers("x-webhook-secret") webhookSecret: string | undefined,
+  ) {
+    this.validateWebhookSecret(webhookSecret);
+
+    return this.evolutionWebhookService.handleWebhook(body, event);
   }
 
   @Get("samples")
