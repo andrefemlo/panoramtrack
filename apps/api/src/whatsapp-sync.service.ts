@@ -1081,4 +1081,161 @@ export class WhatsappSyncService {
 
     return match?.[1] || null;
   }
+
+  private async debugBase64Attempts(instanceName: string, rawMessage: unknown) {
+    const encodedInstanceName = encodeURIComponent(instanceName);
+
+    const key =
+      (rawMessage as any)?.key ||
+      (rawMessage as any)?.message?.key ||
+      (rawMessage as any)?.data?.key;
+
+    const message =
+      (rawMessage as any)?.message?.message ||
+      (rawMessage as any)?.message ||
+      (rawMessage as any)?.data?.message;
+
+    const attempts = [
+      {
+        name: "message-wrapper",
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: {
+          message: rawMessage,
+          convertToMp4: false,
+        },
+      },
+      {
+        name: "raw-message",
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: rawMessage as Record<string, unknown>,
+      },
+      {
+        name: "key-message",
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: {
+          key,
+          message,
+          convertToMp4: false,
+        },
+      },
+      {
+        name: "message-key-message",
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: {
+          message: {
+            key,
+            message,
+          },
+          convertToMp4: false,
+        },
+      },
+      {
+        name: "quoted-shape",
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: {
+          message: {
+            key,
+            messageTimestamp:
+              (rawMessage as any)?.messageTimestamp ||
+              (rawMessage as any)?.timestamp ||
+              (rawMessage as any)?.data?.messageTimestamp,
+            message,
+          },
+          convertToMp4: false,
+        },
+      },
+    ];
+
+    const results = [];
+
+    for (const attempt of attempts) {
+      try {
+        const response = await this.callEvolution(
+          "POST",
+          attempt.path,
+          attempt.body,
+        );
+
+        const extracted = this.extractBase64Media(response, null);
+
+        results.push({
+          name: attempt.name,
+          ok: true,
+          extracted: extracted
+            ? {
+                mediaUrlPrefix: extracted.mediaUrl.slice(0, 80),
+                mimeType: extracted.mimeType,
+                fileName: extracted.fileName,
+              }
+            : null,
+          responseSummary: this.summarizeUnknown(response),
+        });
+      } catch (error: any) {
+        results.push({
+          name: attempt.name,
+          ok: false,
+          error:
+            error?.response ||
+            error?.message ||
+            error?.toString?.() ||
+            "unknown error",
+        });
+      }
+    }
+
+    return results;
+  }
+
+  private summarizeRawMessage(rawMessage: unknown) {
+    const item = rawMessage as any;
+    const key = item?.key || item?.message?.key || item?.data?.key || {};
+    const message =
+      item?.message?.message || item?.message || item?.data?.message || {};
+
+    return {
+      topLevelKeys: Object.keys(item || {}),
+      key: {
+        id: key?.id,
+        remoteJid: key?.remoteJid,
+        fromMe: key?.fromMe,
+      },
+      messageKeys: Object.keys(message || {}),
+      messageType: item?.messageType || item?.type,
+      timestamp:
+        item?.messageTimestamp ||
+        item?.timestamp ||
+        item?.data?.messageTimestamp,
+    };
+  }
+
+  private summarizeUnknown(value: unknown) {
+    if (!value || typeof value !== "object") {
+      return {
+        type: typeof value,
+        preview: String(value).slice(0, 200),
+      };
+    }
+
+    const data = value as any;
+
+    return {
+      topLevelKeys: Object.keys(data),
+      nestedDataKeys:
+        data?.data && typeof data.data === "object"
+          ? Object.keys(data.data)
+          : null,
+      nestedResponseKeys:
+        data?.response && typeof data.response === "object"
+          ? Object.keys(data.response)
+          : null,
+      base64Preview:
+        typeof data?.base64 === "string"
+          ? data.base64.slice(0, 80)
+          : typeof data?.data?.base64 === "string"
+            ? data.data.base64.slice(0, 80)
+            : typeof data?.response?.base64 === "string"
+              ? data.response.base64.slice(0, 80)
+              : null,
+    };
+  }
 }
