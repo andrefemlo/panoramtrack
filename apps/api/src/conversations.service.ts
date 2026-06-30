@@ -435,6 +435,7 @@ export class ConversationsService {
         : mediaBase64
       : mediaUrl;
 
+    const storedMediaUrl = mediaUrl || mediaBase64 || null;
     const evolutionResponse = await this.callEvolution({
       instanceName: context.instanceName,
       endpoint: "sendMedia",
@@ -486,7 +487,7 @@ export class ConversationsService {
         direction: "outbound",
         messageType: mediaType,
         body: caption,
-        mediaUrl: mediaUrl || null,
+        mediaUrl: storedMediaUrl || null,
         mediaMimeType: mimeType,
         mediaFileName: fileName,
         fromPhone: context.instancePhone,
@@ -581,8 +582,12 @@ export class ConversationsService {
     const caption = this.optionalString(body.caption);
     const mediaType = this.requiredString(body.mediaType, "mediaType");
 
-    if (!["image", "audio"].includes(mediaType)) {
-      throw new BadRequestException("mediaType must be image or audio");
+    const allowedMediaTypes = ["image", "audio", "video", "document"];
+
+    if (!allowedMediaTypes.includes(mediaType)) {
+      throw new BadRequestException(
+        "mediaType must be image, audio, video or document",
+      );
     }
 
     if (!mediaBase64 && !mediaUrl) {
@@ -596,6 +601,8 @@ export class ConversationsService {
         ? mediaBase64.split(",").pop()
         : mediaBase64
       : mediaUrl;
+
+    const storedMediaUrl = mediaUrl || mediaBase64 || null;
 
     const evolutionResponse = await this.callEvolution({
       instanceName: context.instanceName,
@@ -612,6 +619,33 @@ export class ConversationsService {
 
     const externalMessageId = this.extractEvolutionMessageId(evolutionResponse);
 
+    const existingMessage = await this.prisma.message.findUnique({
+      where: {
+        clientId_externalMessageId: {
+          clientId: context.client.id,
+          externalMessageId,
+        },
+      },
+    });
+
+    if (existingMessage) {
+      await this.prisma.conversation.update({
+        where: {
+          id: context.conversation.id,
+        },
+        data: {
+          lastMessageAt: existingMessage.sentAt,
+        },
+      });
+
+      return {
+        status: "ok",
+        duplicated: true,
+        message: existingMessage,
+        evolutionResponse,
+      };
+    }
+
     const message = await this.prisma.message.create({
       data: {
         clientId: context.client.id,
@@ -621,7 +655,7 @@ export class ConversationsService {
         direction: "outbound",
         messageType: mediaType,
         body: caption,
-        mediaUrl: mediaUrl || null,
+        mediaUrl: storedMediaUrl,
         mediaMimeType: mimeType,
         mediaFileName: fileName,
         fromPhone: context.instancePhone,
@@ -641,6 +675,7 @@ export class ConversationsService {
 
     return {
       status: "ok",
+      duplicated: false,
       message,
       evolutionResponse,
     };

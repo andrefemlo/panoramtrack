@@ -240,6 +240,12 @@ export class WhatsappSyncService {
     for (const rawMessage of rawMessages) {
       const message = this.normalizeMessage(rawMessage, params.externalChatId);
 
+      await this.hydrateMessageMedia({
+        instanceName: params.instanceName,
+        rawMessage,
+        message,
+      });
+
       if (!message.externalMessageId) {
         messagesSkipped += 1;
         continue;
@@ -594,13 +600,22 @@ export class WhatsappSyncService {
     const explicit = this.optionalString(item?.messageType || item?.type);
 
     if (explicit) {
-      if (explicit.includes("image")) return "image";
-      if (explicit.includes("audio")) return "audio";
-      return explicit;
+      const normalized = explicit.toLowerCase();
+
+      if (normalized.includes("image")) return "image";
+      if (normalized.includes("audio")) return "audio";
+      if (normalized.includes("video")) return "video";
+      if (normalized.includes("document")) return "document";
+      if (normalized.includes("sticker")) return "sticker";
+
+      return normalized;
     }
 
     if (messageNode?.imageMessage) return "image";
     if (messageNode?.audioMessage) return "audio";
+    if (messageNode?.videoMessage) return "video";
+    if (messageNode?.documentMessage) return "document";
+    if (messageNode?.stickerMessage) return "sticker";
 
     return "text";
   }
@@ -611,7 +626,13 @@ export class WhatsappSyncService {
         ? messageNode?.imageMessage
         : messageType === "audio"
           ? messageNode?.audioMessage
-          : null;
+          : messageType === "video"
+            ? messageNode?.videoMessage
+            : messageType === "document"
+              ? messageNode?.documentMessage
+              : messageType === "sticker"
+                ? messageNode?.stickerMessage
+                : null;
 
     return {
       mediaUrl:
@@ -622,7 +643,10 @@ export class WhatsappSyncService {
         ) || null,
       mediaFileName:
         this.optionalString(
-          item?.fileName || item?.filename || node?.fileName,
+          item?.fileName ||
+            item?.filename ||
+            node?.fileName ||
+            node?.fileNameWithExtension,
         ) || null,
     };
   }
@@ -861,5 +885,154 @@ export class WhatsappSyncService {
         slug: "panoram-demo",
       },
     });
+  }
+
+  private async hydrateMessageMedia(params: {
+    instanceName: string;
+    rawMessage: unknown;
+    message: {
+      messageType: string;
+      mediaUrl: string | null;
+      mediaMimeType: string | null;
+      mediaFileName: string | null;
+    };
+  }) {
+    const mediaTypes = ["image", "audio", "video", "document", "sticker"];
+
+    if (!mediaTypes.includes(params.message.messageType)) {
+      return;
+    }
+
+    const downloaded = await this.tryDownloadMediaAsDataUrl(
+      params.instanceName,
+      params.rawMessage,
+      params.message.mediaMimeType,
+    );
+
+    if (!downloaded) {
+      return;
+    }
+
+    params.message.mediaUrl = downloaded.mediaUrl;
+    params.message.mediaMimeType =
+      downloaded.mimeType || params.message.mediaMimeType;
+    params.message.mediaFileName =
+      downloaded.fileName || params.message.mediaFileName;
+  }
+
+  private async tryDownloadMediaAsDataUrl(
+    instanceName: string,
+    rawMessage: unknown,
+    fallbackMimeType: string | null,
+  ): Promise<{
+    mediaUrl: string;
+    mimeType: string | null;
+    fileName: string | null;
+  } | null> {
+    const encodedInstanceName = encodeURIComponent(instanceName);
+
+    const attempts = [
+      {
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: {
+          message: rawMessage,
+          convertToMp4: false,
+        },
+      },
+      {
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: rawMessage as Record<string, unknown>,
+      },
+      {
+        path: `/chat/getBase64FromMediaMessage/${encodedInstanceName}`,
+        body: {
+          key: (rawMessage as any)?.key || (rawMessage as any)?.message?.key,
+          message:
+            (rawMessage as any)?.message?.message ||
+            (rawMessage as any)?.message ||
+            (rawMessage as any)?.data?.message,
+        },
+      },
+    ];
+
+    for (const attempt of attempts) {
+      try {
+        const response = await this.callEvolution(
+          "POST",
+          attempt.path,
+          attempt.body,
+        );
+        const parsed = this.extractBase64Media(response, fallbackMimeType);
+
+        if (parsed) {
+          return parsed;
+        }
+      } catch {
+        // tenta próximo formato
+      }
+    }
+
+    return null;
+  }
+
+  private extractBase64Media(
+    response: unknown,
+    fallbackMimeType: string | null,
+  ): {
+    mediaUrl: string;
+    mimeType: string | null;
+    fileName: string | null;
+  } | null {
+    const data = response as any;
+
+    const rawBase64 =
+      data?.base64 ||
+      data?.media ||
+      data?.data ||
+      data?.data?.base64 ||
+      data?.data?.media ||
+      data?.response?.base64 ||
+      data?.response?.media;
+
+    if (typeof rawBase64 !== "string" || !rawBase64.trim()) {
+      return null;
+    }
+
+    if (rawBase64.startsWith("data:")) {
+      return {
+        mediaUrl: rawBase64,
+        mimeType:
+          this.extractMimeTypeFromDataUrl(rawBase64) || fallbackMimeType,
+        fileName:
+          this.optionalString(data?.fileName) ||
+          this.optionalString(data?.filename) ||
+          this.optionalString(data?.data?.fileName) ||
+          null,
+      };
+    }
+
+    const mimeType =
+      this.optionalString(data?.mimetype) ||
+      this.optionalString(data?.mimeType) ||
+      this.optionalString(data?.data?.mimetype) ||
+      this.optionalString(data?.data?.mimeType) ||
+      fallbackMimeType ||
+      "application/octet-stream";
+
+    return {
+      mediaUrl: `data:${mimeType};base64,${rawBase64}`,
+      mimeType,
+      fileName:
+        this.optionalString(data?.fileName) ||
+        this.optionalString(data?.filename) ||
+        this.optionalString(data?.data?.fileName) ||
+        null,
+    };
+  }
+
+  private extractMimeTypeFromDataUrl(dataUrl: string): string | null {
+    const match = dataUrl.match(/^data:([^;]+);base64,/);
+
+    return match?.[1] || null;
   }
 }

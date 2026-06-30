@@ -604,6 +604,38 @@ createApp({
       return "Mensagem sem texto";
     },
 
+    isImageMessage(message) {
+      return (
+        ["image", "sticker"].includes(message?.messageType) &&
+        !!message?.mediaUrl
+      );
+    },
+
+    isAudioMessage(message) {
+      return message?.messageType === "audio" && !!message?.mediaUrl;
+    },
+
+    isVideoMessage(message) {
+      return message?.messageType === "video" && !!message?.mediaUrl;
+    },
+
+    isDocumentMessage(message) {
+      return message?.messageType === "document" && !!message?.mediaUrl;
+    },
+
+    isMediaMessage(message) {
+      return (
+        this.isImageMessage(message) ||
+        this.isAudioMessage(message) ||
+        this.isVideoMessage(message) ||
+        this.isDocumentMessage(message)
+      );
+    },
+
+    shouldShowMessageText(message) {
+      return !this.isMediaMessage(message);
+    },
+
     isMediaMessage(message, mediaType) {
       return message?.messageType === mediaType && !!message?.mediaUrl;
     },
