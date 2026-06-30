@@ -23,6 +23,9 @@ createApp({
       attributionModalOpen: false,
       candidateSearch: "",
       composerText: "",
+      selectedMediaFile: null,
+      selectedMediaLabel: "",
+      sendingMessage: false,
       contacts: [],
       conversationMessages: [],
       conversations: [],
@@ -254,6 +257,8 @@ createApp({
 
     async openConversation(conversationId) {
       this.selectedConversationId = conversationId;
+      this.clearSelectedMedia();
+      this.composerText = "";
       const detail = await this.api(
         `/conversations/${encodeURIComponent(conversationId)}/messages?take=80`,
       );
@@ -267,22 +272,199 @@ createApp({
       if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
     },
 
+    async sendComposer() {
+      if (this.selectedMediaFile) {
+        await this.sendMediaMessage();
+        return;
+      }
+
+      await this.sendTextMessage();
+    },
+
     async sendTextMessage() {
       const text = this.composerText.trim();
 
-      if (!text || !this.selectedConversationId) return;
+      if (!text || !this.selectedConversationId || this.sendingMessage) return;
 
-      await this.api(
-        `/conversations/${encodeURIComponent(this.selectedConversationId)}/messages/text`,
-        {
-          method: "POST",
-          body: JSON.stringify({ text }),
-        },
-      );
+      this.sendingMessage = true;
 
-      this.composerText = "";
-      await this.openConversation(this.selectedConversationId);
-      await this.loadConversations();
+      try {
+        await this.api(
+          `/conversations/${encodeURIComponent(this.selectedConversationId)}/messages/text`,
+          {
+            method: "POST",
+            body: JSON.stringify({ text }),
+          },
+        );
+
+        this.composerText = "";
+        await this.openConversation(this.selectedConversationId);
+        await this.loadConversations();
+      } catch (error) {
+        this.error = this.extractErrorMessage(error);
+      } finally {
+        this.sendingMessage = false;
+      }
+    },
+
+    openMediaPicker() {
+      if (this.$refs.mediaInput) {
+        this.$refs.mediaInput.click();
+      }
+    },
+
+    handleMediaSelected(event) {
+      const file = event.target.files?.[0];
+
+      if (!file) {
+        return;
+      }
+
+      const maxSizeInBytes = 20 * 1024 * 1024;
+
+      if (file.size > maxSizeInBytes) {
+        this.error = "O arquivo deve ter no máximo 20MB.";
+        event.target.value = "";
+        return;
+      }
+
+      const mediaType = this.inferMediaType(file);
+
+      if (!mediaType) {
+        this.error = "Formato não suportado. Envie imagem, áudio, vídeo ou documento.";
+        event.target.value = "";
+        return;
+      }
+
+      this.selectedMediaFile = file;
+      this.selectedMediaLabel = this.mediaTypeLabel(mediaType);
+    },
+
+    clearSelectedMedia() {
+      this.selectedMediaFile = null;
+      this.selectedMediaLabel = "";
+
+      if (this.$refs.mediaInput) {
+        this.$refs.mediaInput.value = "";
+      }
+    },
+
+    async sendMediaMessage() {
+      if (!this.selectedMediaFile || !this.selectedConversationId || this.sendingMessage) {
+        return;
+      }
+
+      this.sendingMessage = true;
+
+      try {
+        const file = this.selectedMediaFile;
+        const mediaType = this.inferMediaType(file);
+
+        if (!mediaType) {
+          this.error = "Formato não suportado.";
+          return;
+        }
+
+        const mediaBase64 = await this.fileToBase64(file);
+        const caption = this.composerText.trim();
+
+        await this.api(
+          `/conversations/${encodeURIComponent(this.selectedConversationId)}/messages/media`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              mediaBase64,
+              mimeType: file.type || "application/octet-stream",
+              fileName: file.name,
+              caption,
+              mediaType,
+            }),
+          },
+        );
+
+        this.composerText = "";
+        this.clearSelectedMedia();
+
+        await this.openConversation(this.selectedConversationId);
+        await this.loadConversations();
+      } catch (error) {
+        this.error = this.extractErrorMessage(error);
+      } finally {
+        this.sendingMessage = false;
+      }
+    },
+
+    fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    },
+
+    inferMediaType(file) {
+      const mimeType = file.type || "";
+      const fileName = file.name.toLowerCase();
+
+      if (mimeType.startsWith("image/")) return "image";
+      if (mimeType.startsWith("audio/")) return "audio";
+      if (mimeType.startsWith("video/")) return "video";
+
+      const documentExtensions = [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".txt",
+        ".csv",
+        ".ppt",
+        ".pptx",
+      ];
+
+      if (documentExtensions.some((extension) => fileName.endsWith(extension))) {
+        return "document";
+      }
+
+      if (
+        mimeType === "application/pdf" ||
+        mimeType.includes("document") ||
+        mimeType.includes("spreadsheet") ||
+        mimeType.includes("presentation") ||
+        mimeType === "text/plain" ||
+        mimeType === "text/csv"
+      ) {
+        return "document";
+      }
+
+      return null;
+    },
+
+    mediaTypeLabel(mediaType) {
+      if (mediaType === "image") return "Imagem";
+      if (mediaType === "audio") return "Áudio";
+      if (mediaType === "video") return "Vídeo";
+      if (mediaType === "document") return "Documento";
+
+      return "Arquivo";
+    },
+
+    formatFileSize(size) {
+      if (!Number.isFinite(size)) {
+        return "-";
+      }
+
+      if (size < 1024) {
+        return `${size} B`;
+      }
+
+      if (size < 1024 * 1024) {
+        return `${(size / 1024).toFixed(1)} KB`;
+      }
+
+      return `${(size / 1024 / 1024).toFixed(1)} MB`;
     },
 
     async openLeadConversation(lead) {

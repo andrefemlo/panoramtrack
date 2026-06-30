@@ -431,7 +431,7 @@ select:focus {
   padding: 11px;
 }
 
-.lead-card + .lead-card {
+.lead-card+.lead-card {
   margin-top: 8px;
 }
 
@@ -478,6 +478,7 @@ select:focus {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -838,7 +839,7 @@ select:focus {
   font-size: 13px;
 }
 
-.info-card + .info-card {
+.info-card+.info-card {
   margin-top: 8px;
 }
 
@@ -1074,4 +1075,102 @@ select:focus {
   .lead-drawer {
     width: 100%;
   }
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.attach-button {
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.composer-main {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+
+.selected-media-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  padding: 8px 10px;
+}
+
+.selected-media-preview strong,
+.selected-media-preview span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-media-preview strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.selected-media-preview span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.icon-button.compact {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  font-size: 16px;
+}
+
+.chat-video {
+  display: block;
+  width: min(360px, 72vw);
+  max-height: 320px;
+  border-radius: 8px;
+  background: #000000;
+}
+
+.chat-document {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  max-width: 320px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 10px;
+  text-decoration: none;
+}
+
+.chat-document:hover {
+  border-color: var(--brand);
+}
+
+.chat-document strong,
+.chat-document span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-document span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.media-caption {
+  margin-top: 7px;
+  white-space: pre-wrap;
 }
