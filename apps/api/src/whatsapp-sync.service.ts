@@ -1238,4 +1238,12 @@ export class WhatsappSyncService {
               : null,
     };
   }
+
+  private requiredString(value: unknown, fieldName: string): string {
+    if (typeof value !== "string" || !value.trim()) {
+      throw new BadRequestException(`${fieldName} is required`);
+    }
+
+    return value.trim();
+  }
 }
