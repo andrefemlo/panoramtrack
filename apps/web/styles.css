@@ -1174,3 +1174,24 @@ select:focus {
   margin-top: 7px;
   white-space: pre-wrap;
 }
+
+.media-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.6);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.08);
+  color: #64748b;
+  font-size: 13px;
+}
+
+.media-unavailable span {
+  font-weight: 700;
+  color: #475569;
+}
+
+.media-unavailable small {
+  font-size: 12px;
+}

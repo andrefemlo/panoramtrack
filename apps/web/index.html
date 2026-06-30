@@ -154,19 +154,26 @@
                   <div v-for="message in conversationMessages" :key="message.id" class="chat-message-row"
                     :class="message.direction === 'outbound' ? 'outbound' : 'inbound'">
                     <div class="chat-bubble" :class="message.direction === 'outbound' ? 'outbound' : 'inbound'">
-                      <img v-if="isMediaMessage(message, 'image')" class="chat-image" :src="message.mediaUrl"
-                        alt="Imagem da conversa" />
 
-                      <audio v-if="isAudioMessage(message)" class="chat-audio" controls preload="metadata">
+                      <div v-if="isUnavailableMedia(message)" class="media-unavailable">
+                        <span>{{ mediaTypeLabel(message.messageType) }} indisponível</span>
+                        <small>Esta mídia não está mais disponível para download.</small>
+                      </div>
+
+                      <img v-if="isMediaMessage(message, 'image') && !isUnavailableMedia(message)" class="chat-image"
+                        :src="message.mediaUrl" alt="Imagem da conversa" />
+
+                      <audio v-if="isAudioMessage(message) && !isUnavailableMedia(message)" class="chat-audio" controls
+                        preload="metadata">
                         <source :src="normalizedAudioSrc(message)" :type="normalizedAudioMimeType(message)" />
                         Seu navegador não conseguiu reproduzir este áudio.
                       </audio>
 
-                      <video v-if="isMediaMessage(message, 'video')" class="chat-video" :src="message.mediaUrl"
-                        controls></video>
+                      <video v-if="isMediaMessage(message, 'video') && !isUnavailableMedia(message)" class="chat-video"
+                        :src="message.mediaUrl" controls></video>
 
-                      <a v-if="isMediaMessage(message, 'document')" class="chat-document" :href="message.mediaUrl"
-                        target="_blank" rel="noopener noreferrer">
+                      <a v-if="isMediaMessage(message, 'document') && !isUnavailableMedia(message)"
+                        class="chat-document" :href="message.mediaUrl" target="_blank" rel="noopener noreferrer">
                         <strong>{{ message.mediaFileName || 'Documento' }}</strong>
                         <span>{{ message.mediaMimeType || 'arquivo' }}</span>
                       </a>

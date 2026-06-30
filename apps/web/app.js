@@ -836,5 +836,31 @@ createApp({
 
       return mimeType || "audio/ogg";
     },
+
+    isUnavailableMedia(message) {
+      const mediaUrl = message?.mediaUrl || "";
+
+      if (!this.isMediaMessage(message)) {
+        return false;
+      }
+
+      if (!mediaUrl) {
+        return true;
+      }
+
+      if (mediaUrl.includes("mmg.whatsapp.net")) {
+        return true;
+      }
+
+      if (mediaUrl.includes("a.whatsapp.net")) {
+        return true;
+      }
+
+      if (mediaUrl.includes(".enc")) {
+        return true;
+      }
+
+      return false;
+    },
   },
 }).mount("#app");
