@@ -691,6 +691,18 @@ createApp({
       return mimeType || "audio/ogg";
     },
 
+    normalizedAudioSrc(message) {
+      const mediaUrl = message?.mediaUrl || "";
+
+      if (!mediaUrl) {
+        return "";
+      }
+
+      return mediaUrl
+        .replace("data:audio/ogg; codecs=opus;base64,", "data:audio/ogg;base64,")
+        .replace("data:audio/ogg;codecs=opus;base64,", "data:audio/ogg;base64,");
+    },
+
     isAudioMessage(message) {
       return message?.messageType === "audio" && !!message?.mediaUrl;
     },
