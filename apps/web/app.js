@@ -442,6 +442,14 @@ createApp({
 
       try {
         const parsed = JSON.parse(message);
+        if (typeof parsed.message === "string" && parsed.response) {
+          return `${parsed.message}: ${JSON.stringify(parsed.response)}`;
+        }
+
+        if (typeof parsed.message === "object") {
+          return JSON.stringify(parsed.message);
+        }
+
         return parsed.message || message;
       } catch {
         return message;

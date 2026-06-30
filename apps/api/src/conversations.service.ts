@@ -674,8 +674,8 @@ export class ConversationsService {
 
     const instanceName =
       usableInstance?.name ||
-      conversation.whatsappInstance?.name ||
-      process.env.EVOLUTION_DEFAULT_INSTANCE;
+      process.env.EVOLUTION_DEFAULT_INSTANCE ||
+      conversation.whatsappInstance?.name;
 
     if (!instanceName) {
       throw new BadRequestException("Evolution instance name not configured");
@@ -731,8 +731,8 @@ export class ConversationsService {
 
     const instanceName =
       usableInstance?.name ||
-      conversation.whatsappInstance?.name ||
-      process.env.EVOLUTION_DEFAULT_INSTANCE;
+      process.env.EVOLUTION_DEFAULT_INSTANCE ||
+      conversation.whatsappInstance?.name;
 
     if (!instanceName) {
       throw new BadRequestException("Evolution instance name not configured");
@@ -774,6 +774,11 @@ export class ConversationsService {
       if (defaultInstance) {
         return defaultInstance;
       }
+
+      return {
+        name: defaultInstanceName,
+        phoneNumber: null,
+      };
     }
 
     return this.prisma.whatsAppInstance.findFirst({
