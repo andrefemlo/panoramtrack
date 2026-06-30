@@ -279,6 +279,12 @@ select:focus {
   font-size: 12px;
 }
 
+.secondary-button.small {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .secondary-button {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -800,6 +806,26 @@ select:focus {
   width: 100%;
   min-height: 38px;
   padding: 0 10px;
+}
+
+.drawer-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.drawer-composer input {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  outline: none;
+}
+
+.drawer-composer input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
 }
 
 .info-card {

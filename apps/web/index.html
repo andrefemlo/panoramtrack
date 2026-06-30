@@ -290,6 +290,27 @@
 
             <section class="drawer-section">
               <div class="section-title">
+                <h3>Atendimento</h3>
+                <button class="secondary-button small" type="button" @click="openLeadConversation(selectedLead)">
+                  Abrir conversa
+                </button>
+              </div>
+
+              <div class="drawer-composer">
+                <input
+                  v-model="drawerMessage"
+                  type="text"
+                  placeholder="Enviar mensagem pelo WhatsApp..."
+                  @keydown.enter="sendDrawerMessage"
+                />
+                <button class="primary-button small" type="button" @click="sendDrawerMessage">
+                  Enviar
+                </button>
+              </div>
+            </section>
+
+            <section class="drawer-section">
+              <div class="section-title">
                 <h3>Atribuição</h3>
                 <button class="primary-button small" type="button" @click="openAttributionModal">
                   Atribuir

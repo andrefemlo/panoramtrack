@@ -98,7 +98,7 @@ export class EvolutionWebhookService {
             id: existingLead.id,
           },
           data:
-            !existingLead.name && contactName
+            contactName && existingLead.name !== contactName
               ? {
                   name: contactName,
                 }

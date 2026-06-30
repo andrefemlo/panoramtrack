@@ -667,11 +667,13 @@ export class ConversationsService {
       throw new NotFoundException("Conversation not found");
     }
 
-    if (conversation.whatsappInstance?.status === "deleted") {
-      throw new BadRequestException("WhatsApp instance was deleted");
-    }
+    const usableInstance = await this.resolveUsableInstance({
+      clientId: client.id,
+      currentInstance: conversation.whatsappInstance,
+    });
 
     const instanceName =
+      usableInstance?.name ||
       conversation.whatsappInstance?.name ||
       process.env.EVOLUTION_DEFAULT_INSTANCE;
 
@@ -684,7 +686,10 @@ export class ConversationsService {
       conversation,
       lead: conversation.lead,
       instanceName,
-      instancePhone: conversation.whatsappInstance?.phoneNumber || null,
+      instancePhone:
+        usableInstance?.phoneNumber ||
+        conversation.whatsappInstance?.phoneNumber ||
+        null,
     };
   }
 
@@ -719,7 +724,13 @@ export class ConversationsService {
       throw new NotFoundException("Conversation not found");
     }
 
+    const usableInstance = await this.resolveUsableInstance({
+      clientId: client.id,
+      currentInstance: conversation.whatsappInstance,
+    });
+
     const instanceName =
+      usableInstance?.name ||
       conversation.whatsappInstance?.name ||
       process.env.EVOLUTION_DEFAULT_INSTANCE;
 
@@ -732,8 +743,50 @@ export class ConversationsService {
       lead,
       conversation,
       instanceName,
-      instancePhone: conversation.whatsappInstance?.phoneNumber || null,
+      instancePhone:
+        usableInstance?.phoneNumber ||
+        conversation.whatsappInstance?.phoneNumber ||
+        null,
     };
+  }
+
+  private async resolveUsableInstance(params: {
+    clientId: string;
+    currentInstance: any;
+  }) {
+    if (params.currentInstance && params.currentInstance.status !== "deleted") {
+      return params.currentInstance;
+    }
+
+    const defaultInstanceName = process.env.EVOLUTION_DEFAULT_INSTANCE;
+
+    if (defaultInstanceName) {
+      const defaultInstance = await this.prisma.whatsAppInstance.findFirst({
+        where: {
+          clientId: params.clientId,
+          name: defaultInstanceName,
+          status: {
+            not: "deleted",
+          },
+        },
+      });
+
+      if (defaultInstance) {
+        return defaultInstance;
+      }
+    }
+
+    return this.prisma.whatsAppInstance.findFirst({
+      where: {
+        clientId: params.clientId,
+        status: {
+          not: "deleted",
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
   }
 
   private async callEvolution(params: {

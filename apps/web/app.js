@@ -27,6 +27,7 @@ createApp({
       conversationMessages: [],
       conversations: [],
       drawerOpen: false,
+      drawerMessage: "",
       error: "",
       leads: [],
       loading: false,
@@ -217,6 +218,7 @@ createApp({
       this.selectedLeadId = leadId;
       this.drawerOpen = true;
       this.selectedLead = null;
+      this.drawerMessage = "";
 
       const lead = await this.api(`/leads/${encodeURIComponent(leadId)}`);
       this.selectedLead = lead;
@@ -227,6 +229,7 @@ createApp({
       this.drawerOpen = false;
       this.selectedLead = null;
       this.selectedLeadId = null;
+      this.drawerMessage = "";
     },
 
     async moveLead(leadId, stage) {
@@ -280,6 +283,48 @@ createApp({
       this.composerText = "";
       await this.openConversation(this.selectedConversationId);
       await this.loadConversations();
+    },
+
+    async openLeadConversation(lead) {
+      const conversation = this.getLeadConversation(lead);
+
+      if (!conversation) {
+        this.error = "Este lead ainda não tem conversa individual vinculada.";
+        return;
+      }
+
+      this.view = "conversations";
+      this.drawerOpen = false;
+      await this.loadConversations();
+      await this.openConversation(conversation.id);
+    },
+
+    async sendDrawerMessage() {
+      const text = this.drawerMessage.trim();
+
+      if (!text || !this.selectedLead?.id) return;
+
+      try {
+        await this.api(
+          `/conversations/leads/${encodeURIComponent(this.selectedLead.id)}/messages/text`,
+          {
+            method: "POST",
+            body: JSON.stringify({ text }),
+          },
+        );
+
+        this.drawerMessage = "";
+        await this.openLead(this.selectedLead.id);
+        await this.refreshActiveView();
+      } catch (error) {
+        this.error = this.extractErrorMessage(error);
+      }
+    },
+
+    getLeadConversation(lead) {
+      return (lead?.conversations || []).find((conversation) =>
+        String(conversation.externalChatId || "").endsWith("@s.whatsapp.net"),
+      );
     },
 
     openAttributionModal() {
@@ -390,6 +435,17 @@ createApp({
         minute: "2-digit",
         month: "2-digit",
       }).format(new Date(value));
+    },
+
+    extractErrorMessage(error) {
+      const message = String(error?.message || error || "Erro desconhecido");
+
+      try {
+        const parsed = JSON.parse(message);
+        return parsed.message || message;
+      } catch {
+        return message;
+      }
     },
   },
 }).mount("#app");
