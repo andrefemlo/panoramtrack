@@ -1377,4 +1377,161 @@ export class WhatsappSyncService {
       attempts,
     };
   }
+
+  async hydrateConversationMedia(
+    conversationId: string,
+    messagesPerChat = 500,
+  ) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: {
+        id: conversationId,
+      },
+      include: {
+        whatsappInstance: true,
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    if (!conversation.externalChatId) {
+      throw new BadRequestException("Conversation externalChatId is required");
+    }
+
+    if (!conversation.whatsappInstance?.name) {
+      throw new BadRequestException(
+        "Conversation whatsapp instance is required",
+      );
+    }
+
+    const mediaTypes = ["image", "audio", "video", "document", "sticker"];
+
+    const messagesToHydrate = await this.prisma.message.findMany({
+      where: {
+        conversationId: conversation.id,
+        messageType: {
+          in: mediaTypes,
+        },
+        OR: [
+          {
+            mediaUrl: null,
+          },
+          {
+            mediaUrl: "",
+          },
+          {
+            mediaUrl: {
+              startsWith: "http",
+            },
+          },
+          {
+            mediaUrl: {
+              contains: "mmg.whatsapp.net",
+            },
+          },
+          {
+            mediaUrl: {
+              endsWith: ".enc",
+            },
+          },
+        ],
+      },
+      orderBy: {
+        sentAt: "desc",
+      },
+      take: 80,
+    });
+
+    if (!messagesToHydrate.length) {
+      return {
+        status: "ok",
+        conversationId: conversation.id,
+        rawMessagesFound: 0,
+        messagesChecked: 0,
+        messagesUpdated: 0,
+        messagesNotFoundInEvolution: 0,
+      };
+    }
+
+    const rawMessagesPayload = await this.fetchMessages(
+      conversation.whatsappInstance.name,
+      conversation.externalChatId,
+      messagesPerChat,
+    );
+
+    const rawMessages = this.extractArray(rawMessagesPayload);
+
+    let messagesUpdated = 0;
+    let messagesNotFoundInEvolution = 0;
+    let messagesWithoutBase64 = 0;
+
+    for (const localMessage of messagesToHydrate) {
+      if (!localMessage.externalMessageId) {
+        messagesNotFoundInEvolution += 1;
+        continue;
+      }
+
+      const rawMessage =
+        rawMessages.find((message: any) => {
+          const key =
+            message?.key || message?.message?.key || message?.data?.key || {};
+
+          return (
+            key?.id === localMessage.externalMessageId ||
+            message?.id === localMessage.externalMessageId ||
+            message?.messageId === localMessage.externalMessageId ||
+            message?.externalMessageId === localMessage.externalMessageId
+          );
+        }) || null;
+
+      if (!rawMessage) {
+        messagesNotFoundInEvolution += 1;
+        continue;
+      }
+
+      const normalized = this.normalizeMessage(
+        rawMessage,
+        conversation.externalChatId,
+      );
+
+      await this.hydrateMessageMedia({
+        instanceName: conversation.whatsappInstance.name,
+        rawMessage,
+        message: normalized,
+      });
+
+      if (!normalized.mediaUrl || !normalized.mediaUrl.startsWith("data:")) {
+        messagesWithoutBase64 += 1;
+        continue;
+      }
+
+      await this.prisma.message.update({
+        where: {
+          id: localMessage.id,
+        },
+        data: {
+          messageType: normalized.messageType || localMessage.messageType,
+          body: normalized.body || localMessage.body,
+          mediaUrl: normalized.mediaUrl,
+          mediaMimeType: normalized.mediaMimeType || localMessage.mediaMimeType,
+          mediaFileName: normalized.mediaFileName || localMessage.mediaFileName,
+        },
+      });
+
+      messagesUpdated += 1;
+    }
+
+    return {
+      status: "ok",
+      conversationId: conversation.id,
+      externalChatId: conversation.externalChatId,
+      instanceName: conversation.whatsappInstance.name,
+      rawMessagesFound: rawMessages.length,
+      messagesChecked: messagesToHydrate.length,
+      messagesUpdated,
+      messagesNotFoundInEvolution,
+      messagesWithoutBase64,
+    };
+  }
 }

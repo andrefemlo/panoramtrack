@@ -8,10 +8,14 @@ import {
   Query,
 } from "@nestjs/common";
 import { ConversationsService } from "./conversations.service";
+import { WhatsappSyncService } from "./whatsapp-sync.service";
 
 @Controller("conversations")
 export class ConversationsController {
-  constructor(private readonly conversationsService: ConversationsService) {}
+  constructor(
+    private readonly conversationsService: ConversationsService,
+    private readonly whatsappSyncService: WhatsappSyncService,
+  ) {}
 
   @Get()
   async listConversations(
@@ -139,6 +143,19 @@ export class ConversationsController {
     return this.conversationsService.sendMediaMessage(
       leadId,
       body && typeof body === "object" ? body : {},
+    );
+  }
+
+  @Post(":conversationId/hydrate-media")
+  async hydrateConversationMedia(
+    @Param("conversationId") conversationId: string,
+    @Body() body: unknown,
+  ) {
+    const data = body && typeof body === "object" ? (body as any) : {};
+
+    return this.whatsappSyncService.hydrateConversationMedia(
+      conversationId,
+      Number(data.messagesPerChat || 500),
     );
   }
 }

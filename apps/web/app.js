@@ -259,17 +259,49 @@ createApp({
       this.selectedConversationId = conversationId;
       this.clearSelectedMedia();
       this.composerText = "";
-      const detail = await this.api(
-        `/conversations/${encodeURIComponent(conversationId)}/messages?take=80`,
-      );
 
-      this.selectedConversation = detail.conversation;
-      this.conversationMessages = detail.messages || [];
+      try {
+        let detail = await this.api(
+          `/conversations/${encodeURIComponent(conversationId)}/messages?take=80`,
+        );
 
-      await nextTick();
+        const messages = Array.isArray(detail.messages) ? detail.messages : [];
 
-      const messagesEl = this.$refs.chatMessages;
-      if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+        const needsHydration = messages.some((message) =>
+          this.messageNeedsMediaHydration(message),
+        );
+
+        if (needsHydration) {
+          const hydrateResult = await this.api(
+            `/conversations/${encodeURIComponent(conversationId)}/hydrate-media`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                messagesPerChat: 500,
+              }),
+            },
+          );
+
+          if (hydrateResult?.messagesUpdated > 0) {
+            detail = await this.api(
+              `/conversations/${encodeURIComponent(conversationId)}/messages?take=80`,
+            );
+          }
+        }
+
+        this.selectedConversation = detail.conversation;
+        this.conversationMessages = detail.messages || [];
+
+        await nextTick();
+
+        const container = this.$refs.chatMessages;
+
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      } catch (error) {
+        this.error = this.extractErrorMessage(error);
+      }
     },
 
     async sendComposer() {
@@ -602,6 +634,24 @@ createApp({
       if (message.messageType === "document") return "Documento";
       if (message.messageType === "sticker") return "Figurinha";
       return "Mensagem sem texto";
+    },
+
+    messageNeedsMediaHydration(message) {
+      const mediaTypes = ["image", "audio", "video", "document", "sticker"];
+
+      if (!mediaTypes.includes(message?.messageType)) {
+        return false;
+      }
+
+      if (!message.mediaUrl) {
+        return true;
+      }
+
+      return (
+        message.mediaUrl.startsWith("http") ||
+        message.mediaUrl.includes("mmg.whatsapp.net") ||
+        message.mediaUrl.endsWith(".enc")
+      );
     },
 
     isImageMessage(message) {
