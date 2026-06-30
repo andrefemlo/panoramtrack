@@ -407,13 +407,23 @@ createApp({
       return [...messages].slice(-8).reverse();
     },
 
+    messagePreview(message, emptyLabel = "Sem mensagem registrada.") {
+      if (!message) return emptyLabel;
+      return message.body || this.messageTypeLabel(message);
+    },
+
     messageTypeLabel(message) {
       if (!message) return "Sem mensagem";
       if (message.messageType === "image") return "Imagem";
       if (message.messageType === "audio") return "Áudio";
       if (message.messageType === "video") return "Vídeo";
       if (message.messageType === "document") return "Documento";
+      if (message.messageType === "sticker") return "Figurinha";
       return "Mensagem sem texto";
+    },
+
+    documentLabel(message) {
+      return message?.mediaFileName || message?.body || "Abrir documento";
     },
 
     initials(value) {

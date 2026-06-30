@@ -22,7 +22,10 @@ export class EvolutionWebhookService {
     const instancePhone = this.extractInstancePhone(data);
     const externalChatId = this.extractChatId(data);
     const leadPhone = this.extractLeadPhone(data);
-    const messageText = this.extractMessageText(data);
+    const messageNode = this.extractMessageNode(data);
+    const messageType = this.extractMessageType(messageNode, data);
+    const media = this.extractMediaFields(messageNode, data, messageType);
+    const messageText = this.extractMessageText(data, messageNode);
     const externalMessageId = this.extractMessageId(data);
     const pushName = this.extractPushName(data);
     const fromMe = this.extractFromMe(data);
@@ -159,8 +162,11 @@ export class EvolutionWebhookService {
           conversationId: conversation.id,
           externalMessageId,
           direction: fromMe ? "outbound" : "inbound",
-          messageType: "text",
+          messageType,
           body: messageText,
+          mediaUrl: media.mediaUrl,
+          mediaMimeType: media.mediaMimeType,
+          mediaFileName: media.mediaFileName,
           fromPhone: fromMe ? null : leadPhone,
           toPhone: fromMe ? leadPhone : null,
           sentAt,
@@ -478,16 +484,119 @@ export class EvolutionWebhookService {
     );
   }
 
-  private extractMessageText(payload: any): string | null {
+  private extractMessageNode(payload: any): any {
+    const root =
+      payload?.data?.message?.message ||
+      payload?.data?.message ||
+      payload?.message?.message ||
+      payload?.message ||
+      payload?.content ||
+      {};
+
+    return this.unwrapMessageNode(root);
+  }
+
+  private unwrapMessageNode(node: any): any {
+    let current = node || {};
+
+    for (let index = 0; index < 6; index += 1) {
+      const next =
+        current?.ephemeralMessage?.message ||
+        current?.viewOnceMessage?.message ||
+        current?.viewOnceMessageV2?.message ||
+        current?.viewOnceMessageV2Extension?.message ||
+        current?.documentWithCaptionMessage?.message ||
+        current?.editedMessage?.message;
+
+      if (!next || next === current) {
+        return current;
+      }
+
+      current = next;
+    }
+
+    return current;
+  }
+
+  private extractMessageType(messageNode: any, payload: any): string {
+    const explicit = this.optionalString(
+      payload?.data?.messageType || payload?.messageType || payload?.type,
+    )?.toLowerCase();
+
+    if (explicit) {
+      if (explicit.includes("image")) return "image";
+      if (explicit.includes("audio")) return "audio";
+      if (explicit.includes("video")) return "video";
+      if (explicit.includes("document")) return "document";
+      if (explicit.includes("sticker")) return "sticker";
+    }
+
+    if (messageNode?.imageMessage) return "image";
+    if (messageNode?.audioMessage) return "audio";
+    if (messageNode?.videoMessage) return "video";
+    if (messageNode?.documentMessage) return "document";
+    if (messageNode?.stickerMessage) return "sticker";
+
+    return "text";
+  }
+
+  private extractMediaFields(messageNode: any, payload: any, messageType: string) {
+    const mediaNode = this.mediaNodeForType(messageNode, messageType);
+
+    return {
+      mediaUrl:
+        this.optionalString(
+          mediaNode?.url ||
+            payload?.data?.mediaUrl ||
+            payload?.mediaUrl ||
+            payload?.data?.url ||
+            payload?.url,
+        ) || null,
+      mediaMimeType:
+        this.optionalString(
+          mediaNode?.mimetype ||
+            payload?.data?.mimetype ||
+            payload?.data?.mimeType ||
+            payload?.mimetype ||
+            payload?.mimeType,
+        ) || null,
+      mediaFileName:
+        this.optionalString(
+          mediaNode?.fileName ||
+            mediaNode?.filename ||
+            payload?.data?.fileName ||
+            payload?.data?.filename ||
+            payload?.fileName ||
+            payload?.filename,
+        ) || null,
+    };
+  }
+
+  private mediaNodeForType(messageNode: any, messageType: string): any {
+    if (messageType === "image") return messageNode?.imageMessage;
+    if (messageType === "audio") return messageNode?.audioMessage;
+    if (messageType === "video") return messageNode?.videoMessage;
+    if (messageType === "document") return messageNode?.documentMessage;
+    if (messageType === "sticker") return messageNode?.stickerMessage;
+
+    return null;
+  }
+
+  private extractMessageText(payload: any, messageNode = this.extractMessageNode(payload)): string | null {
     return (
-      payload?.data?.message?.conversation ||
-      payload?.data?.message?.extendedTextMessage?.text ||
-      payload?.data?.message?.imageMessage?.caption ||
-      payload?.message?.conversation ||
-      payload?.message?.extendedTextMessage?.text ||
-      payload?.text ||
-      payload?.body ||
-      null
+      this.optionalString(
+        messageNode?.conversation ||
+          messageNode?.extendedTextMessage?.text ||
+          messageNode?.imageMessage?.caption ||
+          messageNode?.videoMessage?.caption ||
+          messageNode?.documentMessage?.caption ||
+          payload?.data?.text ||
+          payload?.data?.body ||
+          payload?.data?.caption ||
+          payload?.text ||
+          payload?.body ||
+          payload?.caption,
+      ) || null
     );
   }
 
@@ -698,5 +807,15 @@ export class EvolutionWebhookService {
     }
 
     return pushName;
+  }
+
+  private optionalString(value: unknown): string | null {
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const trimmed = value.trim();
+
+    return trimmed || null;
   }
 }
