@@ -234,6 +234,7 @@ export class WhatsappSyncService {
     const rawMessages = this.extractArray(messagesPayload);
 
     let messagesCreated = 0;
+    let messagesUpdated = 0;
     let messagesSkipped = 0;
     let lastMessageAt: Date | null = null;
 
@@ -261,10 +262,54 @@ export class WhatsappSyncService {
       });
 
       if (existing) {
-        messagesSkipped += 1;
+        const shouldUpdateMedia =
+          !!message.mediaUrl &&
+          (!existing.mediaUrl ||
+            existing.mediaUrl.startsWith("http") ||
+            existing.mediaUrl.includes("mmg.whatsapp.net") ||
+            existing.mediaUrl.endsWith(".enc"));
 
-        if (!lastMessageAt || existing.sentAt > lastMessageAt) {
-          lastMessageAt = existing.sentAt;
+        const shouldUpdateType =
+          existing.messageType === "text" &&
+          ["image", "audio", "video", "document", "sticker"].includes(
+            message.messageType,
+          );
+
+        const shouldUpdateBody = !existing.body && !!message.body;
+
+        if (shouldUpdateMedia || shouldUpdateType || shouldUpdateBody) {
+          const updated = await this.prisma.message.update({
+            where: {
+              id: existing.id,
+            },
+            data: {
+              messageType: shouldUpdateType
+                ? message.messageType
+                : existing.messageType,
+              body: shouldUpdateBody ? message.body : existing.body,
+              mediaUrl: shouldUpdateMedia
+                ? message.mediaUrl
+                : existing.mediaUrl,
+              mediaMimeType: shouldUpdateMedia
+                ? message.mediaMimeType
+                : existing.mediaMimeType,
+              mediaFileName: shouldUpdateMedia
+                ? message.mediaFileName
+                : existing.mediaFileName,
+            },
+          });
+
+          messagesUpdated += 1;
+
+          if (!lastMessageAt || updated.sentAt > lastMessageAt) {
+            lastMessageAt = updated.sentAt;
+          }
+        } else {
+          messagesSkipped += 1;
+
+          if (!lastMessageAt || existing.sentAt > lastMessageAt) {
+            lastMessageAt = existing.sentAt;
+          }
         }
 
         continue;
@@ -309,6 +354,7 @@ export class WhatsappSyncService {
     return {
       messagesFound: rawMessages.length,
       messagesCreated,
+      messagesUpdated,
       messagesSkipped,
     };
   }
