@@ -216,6 +216,118 @@ export class WhatsappSyncService {
     return summary;
   }
 
+  async syncContacts(rawInstanceName: string) {
+    const instanceName = decodeURIComponent(rawInstanceName || "").trim();
+
+    if (!instanceName) {
+      throw new BadRequestException("instanceName is required");
+    }
+
+    const client = await this.getDemoClient();
+
+    const contactsPayload = await this.fetchContacts(instanceName);
+    const rawContacts = this.extractArray(contactsPayload);
+
+    const summary = {
+      status: "ok",
+      instanceName,
+      contactsFound: rawContacts.length,
+      contactsWithPhone: 0,
+      existingLeadsFound: 0,
+      leadsUpdatedName: 0,
+      leadsUpdatedPhoto: 0,
+      leadsSkipped: 0,
+      sample: [] as Array<{
+        phone: string;
+        oldName: string | null;
+        newName: string | null;
+        hasPhoto: boolean;
+      }>,
+    };
+
+    for (const rawContact of rawContacts) {
+      const contact = this.normalizeContact(rawContact);
+
+      if (!contact.phone) {
+        summary.leadsSkipped += 1;
+        continue;
+      }
+
+      summary.contactsWithPhone += 1;
+
+      const existingLead = await this.prisma.lead.findUnique({
+        where: {
+          clientId_phone: {
+            clientId: client.id,
+            phone: contact.phone,
+          },
+        },
+      });
+
+      if (!existingLead) {
+        summary.leadsSkipped += 1;
+        continue;
+      }
+
+      summary.existingLeadsFound += 1;
+
+      const data: {
+        name?: string;
+        profilePictureUrl?: string;
+      } = {};
+
+      if (
+        contact.name &&
+        this.shouldUpdateLeadName({
+          existingName: existingLead.name,
+          newName: contact.name,
+          phone: contact.phone,
+          overwriteNames: false,
+        })
+      ) {
+        data.name = contact.name;
+      }
+
+      if (
+        contact.profilePictureUrl &&
+        contact.profilePictureUrl !== existingLead.profilePictureUrl
+      ) {
+        data.profilePictureUrl = contact.profilePictureUrl;
+      }
+
+      if (!Object.keys(data).length) {
+        summary.leadsSkipped += 1;
+        continue;
+      }
+
+      await this.prisma.lead.update({
+        where: {
+          id: existingLead.id,
+        },
+        data,
+      });
+
+      if (data.name) {
+        summary.leadsUpdatedName += 1;
+      }
+
+      if (data.profilePictureUrl) {
+        summary.leadsUpdatedPhoto += 1;
+      }
+
+      if (summary.sample.length < 20) {
+        summary.sample.push({
+          phone: contact.phone,
+          oldName: existingLead.name,
+          newName: data.name || contact.name,
+          hasPhoto: !!data.profilePictureUrl,
+        });
+      }
+    }
+
+    return summary;
+  }
+
   private async syncMessagesForChat(params: {
     instanceName: string;
     clientId: string;
@@ -397,6 +509,53 @@ export class WhatsappSyncService {
     return [];
   }
 
+  private async fetchContacts(instanceName: string) {
+    const encodedInstanceName = encodeURIComponent(instanceName);
+
+    const attempts = [
+      {
+        path: `/chat/findContacts/${encodedInstanceName}`,
+        body: {},
+      },
+      {
+        path: `/chat/findContacts/${encodedInstanceName}`,
+        body: {
+          where: {},
+        },
+      },
+      {
+        path: `/chat/findChats/${encodedInstanceName}`,
+        body: {},
+      },
+    ];
+
+    let lastError: unknown = null;
+
+    for (const attempt of attempts) {
+      try {
+        const result = await this.callEvolution(
+          "POST",
+          attempt.path,
+          attempt.body,
+        );
+
+        const array = this.extractArray(result);
+
+        if (array.length) {
+          return result;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    return [];
+  }
+
   private async fetchMessages(
     instanceName: string,
     remoteJid: string,
@@ -539,6 +698,65 @@ export class WhatsappSyncService {
     }
 
     return data;
+  }
+
+  private normalizeContact(rawContact: unknown) {
+    const contact = rawContact as any;
+
+    const jid = this.optionalString(
+      contact?.remoteJid ||
+        contact?.id ||
+        contact?.jid ||
+        contact?.chatId ||
+        contact?.key?.remoteJid ||
+        contact?.waId ||
+        contact?.number ||
+        contact?.phone ||
+        contact?.contact?.id ||
+        contact?.contact?.jid,
+    );
+
+    const phone =
+      this.phoneFromContactValue(jid) ||
+      this.phoneFromContactValue(contact?.number) ||
+      this.phoneFromContactValue(contact?.phone) ||
+      this.phoneFromContactValue(contact?.waId) ||
+      null;
+
+    const name = this.cleanContactName(
+      contact?.name ||
+        contact?.pushName ||
+        contact?.notify ||
+        contact?.verifiedName ||
+        contact?.contactName ||
+        contact?.profileName ||
+        contact?.shortName ||
+        contact?.displayName ||
+        contact?.contact?.name ||
+        contact?.contact?.pushName ||
+        contact?.contact?.notify,
+      phone ? `${phone}@s.whatsapp.net` : jid,
+    );
+
+    const profilePictureUrl =
+      this.optionalString(
+        contact?.profilePictureUrl ||
+          contact?.profilePicUrl ||
+          contact?.pictureUrl ||
+          contact?.profilePicture ||
+          contact?.avatar ||
+          contact?.imgUrl ||
+          contact?.image ||
+          contact?.contact?.profilePictureUrl ||
+          contact?.contact?.profilePicUrl,
+      ) || null;
+
+    return {
+      jid,
+      phone,
+      name,
+      profilePictureUrl,
+    };
   }
 
   private normalizeChat(rawChat: unknown) {
@@ -806,6 +1024,32 @@ export class WhatsappSyncService {
     return normalized.endsWith("@s.whatsapp.net");
   }
 
+  private phoneFromContactValue(value: unknown): string | null {
+    const text = this.optionalString(value);
+
+    if (!text) {
+      return null;
+    }
+
+    if (
+      text.includes("@g.us") ||
+      text.includes("@newsletter") ||
+      text.includes("@broadcast") ||
+      text === "status@broadcast"
+    ) {
+      return null;
+    }
+
+    const leftSide = text.includes("@") ? text.split("@")[0] : text;
+    const digits = leftSide.replace(/\D/g, "");
+
+    if (digits.length < 8) {
+      return null;
+    }
+
+    return digits;
+  }
+
   private phoneFromChatId(chatId: string): string | null {
     const phone = chatId.split("@")[0]?.replace(/\D/g, "") || "";
 
@@ -850,12 +1094,29 @@ export class WhatsappSyncService {
       return null;
     }
 
+    if (
+      text.includes("@s.whatsapp.net") ||
+      text.includes("@g.us") ||
+      text.includes("@newsletter")
+    ) {
+      return null;
+    }
+
+    if (text.toLowerCase() === "status") {
+      return null;
+    }
+
     const chatPhone = externalChatId
-      ? this.phoneFromChatId(externalChatId)
+      ? this.phoneFromContactValue(externalChatId)
       : null;
+
     const textDigits = text.replace(/\D/g, "");
 
     if (chatPhone && textDigits && textDigits === chatPhone) {
+      return null;
+    }
+
+    if (/^\+?\d{8,15}$/.test(text.replace(/\s/g, ""))) {
       return null;
     }
 

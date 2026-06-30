@@ -118,6 +118,7 @@ model Lead {
   name           String?
   phone          String
   email          String?
+  profilePictureUrl String?
   status         String   @default("new")
   source         String   @default("whatsapp")
   firstMessage   String?

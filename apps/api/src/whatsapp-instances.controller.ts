@@ -44,6 +44,11 @@ export class WhatsappInstancesController {
     );
   }
 
+  @Post(":instanceName/sync-contacts")
+  async syncContacts(@Param("instanceName") instanceName: string) {
+    return this.whatsappSyncService.syncContacts(instanceName);
+  }
+
   @Post(":instanceName/debug-media")
   async debugMedia(
     @Param("instanceName") instanceName: string,
