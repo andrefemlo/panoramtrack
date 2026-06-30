@@ -70,10 +70,8 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
-            docker rm -f panoram-crm-api panoram-crm-postgres panoram-crm-redis || true
-
             docker compose --env-file /opt/panoramtrack/.env -p panoramtrackcrm pull crm-api
-            docker compose --env-file /opt/panoramtrack/.env -p panoramtrackcrm up -d
+            docker compose --env-file /opt/panoramtrack/.env -p panoramtrackcrm up -d --no-deps --force-recreate crm-api crm-web
 
             docker image prune -f
           EOF
