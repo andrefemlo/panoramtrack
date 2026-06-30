@@ -708,15 +708,46 @@ export class WhatsappSyncService {
       data?.data,
       data?.response,
       data?.result,
+
       data?.chats,
       data?.contacts,
       data?.messages,
+      data?.records,
+      data?.rows,
+
       data?.data?.chats,
       data?.data?.contacts,
       data?.data?.messages,
+      data?.data?.records,
+      data?.data?.rows,
+
       data?.response?.chats,
       data?.response?.contacts,
       data?.response?.messages,
+      data?.response?.records,
+      data?.response?.rows,
+
+      data?.result?.chats,
+      data?.result?.contacts,
+      data?.result?.messages,
+      data?.result?.records,
+      data?.result?.rows,
+
+      data?.messages?.records,
+      data?.messages?.rows,
+      data?.messages?.data,
+
+      data?.data?.messages?.records,
+      data?.data?.messages?.rows,
+      data?.data?.messages?.data,
+
+      data?.response?.messages?.records,
+      data?.response?.messages?.rows,
+      data?.response?.messages?.data,
+
+      data?.result?.messages?.records,
+      data?.result?.messages?.rows,
+      data?.result?.messages?.data,
     ];
 
     for (const candidate of candidates) {
@@ -1286,7 +1317,7 @@ export class WhatsappSyncService {
     const rawMessagesPayload = await this.fetchMessages(
       instanceName,
       finalRemoteJid,
-      50,
+      200,
     );
 
     const rawMessages = this.extractArray(rawMessagesPayload);
