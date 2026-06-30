@@ -1,77 +1,433 @@
 <!doctype html>
 <html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panoram Tracking CRM</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panoram Tracking CRM</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">P</div>
-        <div>
-          <strong>Panoram</strong>
-          <span>Tracking CRM</span>
-        </div>
-      </div>
-
-      <nav class="sidebar-nav">
-        <button class="sidebar-link active" type="button" data-view="pipeline">
-          Pipeline
-        </button>
-        <button class="sidebar-link" type="button" data-view="conversations">
-          Conversas
-        </button>
-        <button class="sidebar-link" type="button" data-view="contacts">
-          Contatos
-        </button>
-      </nav>
-
-      <div class="sidebar-footer">
-        <span>Ambiente MVP</span>
-        <strong id="api-status">Conectando...</strong>
-      </div>
-    </aside>
-
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <h1>Pipeline comercial</h1>
-          <p>Leads, conversas e atribuições das campanhas.</p>
-        </div>
-
-        <div class="topbar-actions">
-          <input id="search-input" class="search-input" type="search"
-            placeholder="Buscar lead, telefone ou e-mail..." />
-          <button id="refresh-button" class="primary-button" type="button">
-            Atualizar
-          </button>
-        </div>
-      </header>
-
-      <section class="content">
-        <section class="board-section">
-          <div id="board" class="pipeline-board">
-            <div class="loading">Carregando leads...</div>
+  <body>
+    <div id="app" v-cloak>
+      <div class="app-shell">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-mark">P</div>
+            <div class="brand-copy">
+              <strong>Panoram</strong>
+              <span>Tracking CRM</span>
+            </div>
           </div>
-        </section>
 
-        <aside id="lead-panel" class="lead-panel hidden">
-          <div class="empty-panel">
-            Selecione um lead para ver detalhes.
+          <nav class="sidebar-nav" aria-label="Navegação principal">
+            <button
+              v-for="item in navItems"
+              :key="item.view"
+              class="sidebar-link"
+              :class="{ active: view === item.view }"
+              type="button"
+              @click="setView(item.view)"
+            >
+              <span class="nav-icon">{{ item.icon }}</span>
+              <span>{{ item.label }}</span>
+            </button>
+          </nav>
+
+          <div class="sidebar-footer">
+            <span>Ambiente</span>
+            <strong>{{ apiStatus }}</strong>
           </div>
         </aside>
-      </section>
-    </main>
-  </div>
 
-  <div id="modal-root"></div>
+        <main class="main">
+          <header class="topbar">
+            <div class="topbar-title">
+              <p>{{ currentSubtitle }}</p>
+              <h1>{{ currentTitle }}</h1>
+            </div>
 
-  <script src="./app.js"></script>
-</body>
+            <div class="topbar-actions">
+              <label class="search-control">
+                <span>Buscar</span>
+                <input
+                  v-model="search"
+                  type="search"
+                  :placeholder="searchPlaceholder"
+                  @input="scheduleRefresh"
+                />
+              </label>
 
+              <button class="secondary-button" type="button" @click="refreshActiveView">
+                Atualizar
+              </button>
+            </div>
+          </header>
+
+          <section class="status-strip" v-if="error">
+            {{ error }}
+          </section>
+
+          <section class="workspace" :class="`workspace-${view}`">
+            <section v-if="view === 'pipeline'" class="pipeline-view">
+              <div class="metrics-row">
+                <article v-for="metric in pipelineMetrics" :key="metric.label" class="metric-card">
+                  <strong>{{ metric.value }}</strong>
+                  <span>{{ metric.label }}</span>
+                </article>
+              </div>
+
+              <div class="pipeline-board">
+                <article
+                  v-for="stage in stages"
+                  :key="stage.slug"
+                  class="pipeline-column"
+                >
+                  <header class="column-header">
+                    <div>
+                      <h2>{{ stage.label }}</h2>
+                      <span>{{ leadsByStage(stage.slug).length }} leads</span>
+                    </div>
+                    <span class="count-pill">{{ leadsByStage(stage.slug).length }}</span>
+                  </header>
+
+                  <div class="column-body">
+                    <button
+                      v-for="lead in leadsByStage(stage.slug)"
+                      :key="lead.id"
+                      class="lead-card"
+                      :class="{ active: selectedLeadId === lead.id }"
+                      type="button"
+                      @click="openLead(lead.id)"
+                    >
+                      <div class="lead-card-top">
+                        <div>
+                          <strong>{{ displayName(lead) }}</strong>
+                          <span>{{ lead.phone || 'Sem telefone' }}</span>
+                        </div>
+                        <span class="badge badge-neutral">{{ lead.source || 'lead' }}</span>
+                      </div>
+
+                      <p class="message-preview">
+                        {{ lead.latestMessage?.body || 'Sem mensagem registrada.' }}
+                      </p>
+
+                      <div class="badge-row">
+                        <span
+                          class="badge"
+                          :class="lead.latestAttribution ? 'badge-green' : 'badge-amber'"
+                        >
+                          {{ lead.latestAttribution?.matchMethod || 'sem atribuição' }}
+                        </span>
+                        <span v-if="leadCampaign(lead)" class="badge badge-blue">
+                          {{ leadCampaign(lead) }}
+                        </span>
+                      </div>
+                    </button>
+
+                    <p v-if="!leadsByStage(stage.slug).length" class="empty-state">
+                      Sem leads nesta etapa.
+                    </p>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section v-else-if="view === 'conversations'" class="conversation-view">
+              <aside class="conversation-list">
+                <header class="list-header">
+                  <strong>Conversas</strong>
+                  <span>{{ conversations.length }} encontradas</span>
+                </header>
+
+                <button
+                  v-for="conversation in conversations"
+                  :key="conversation.id"
+                  class="conversation-item"
+                  :class="{ active: selectedConversationId === conversation.id }"
+                  type="button"
+                  @click="openConversation(conversation.id)"
+                >
+                  <div class="avatar">{{ initials(conversation.contact?.name || conversation.leadPhone) }}</div>
+                  <div class="conversation-summary">
+                    <div class="summary-top">
+                      <strong>{{ conversation.contact?.name || conversation.leadPhone }}</strong>
+                      <span>{{ formatDate(conversation.lastMessageAt) }}</span>
+                    </div>
+                    <small>{{ conversation.leadPhone }}</small>
+                    <p>{{ conversation.latestMessage?.body || messageTypeLabel(conversation.latestMessage) }}</p>
+                  </div>
+                </button>
+
+                <p v-if="!conversations.length && !loading" class="empty-state">
+                  Nenhuma conversa encontrada.
+                </p>
+              </aside>
+
+              <section class="chat-pane">
+                <template v-if="selectedConversation">
+                  <header class="chat-header">
+                    <div class="avatar">
+                      {{ initials(selectedConversation.contact?.name || selectedConversation.leadPhone) }}
+                    </div>
+                    <div class="chat-contact">
+                      <strong>{{ selectedConversation.contact?.name || selectedConversation.leadPhone }}</strong>
+                      <span>{{ selectedConversation.leadPhone }}</span>
+                    </div>
+                    <button class="secondary-button" type="button" @click="openLead(selectedConversation.leadId)">
+                      Ver lead
+                    </button>
+                  </header>
+
+                  <div class="chat-messages" ref="chatMessages">
+                    <div
+                      v-for="message in conversationMessages"
+                      :key="message.id"
+                      class="chat-message-row"
+                      :class="message.direction === 'outbound' ? 'outbound' : 'inbound'"
+                    >
+                      <div class="chat-bubble" :class="message.direction === 'outbound' ? 'outbound' : 'inbound'">
+                        <img
+                          v-if="message.messageType === 'image' && message.mediaUrl"
+                          class="chat-image"
+                          :src="message.mediaUrl"
+                          alt="Imagem da conversa"
+                        />
+                        <audio
+                          v-else-if="message.messageType === 'audio' && message.mediaUrl"
+                          class="chat-audio"
+                          :src="message.mediaUrl"
+                          controls
+                        ></audio>
+                        <div v-else>{{ message.body || messageTypeLabel(message) }}</div>
+                        <small>{{ formatDate(message.sentAt) }}</small>
+                      </div>
+                    </div>
+
+                    <p v-if="!conversationMessages.length" class="chat-empty">
+                      Nenhuma mensagem nesta conversa.
+                    </p>
+                  </div>
+
+                  <footer class="chat-composer">
+                    <input
+                      v-model="composerText"
+                      class="chat-input"
+                      type="text"
+                      placeholder="Digite uma mensagem..."
+                      @keydown.enter="sendTextMessage"
+                    />
+                    <button class="primary-button" type="button" @click="sendTextMessage">
+                      Enviar
+                    </button>
+                  </footer>
+                </template>
+
+                <div v-else class="chat-empty">
+                  Selecione uma conversa.
+                </div>
+              </section>
+            </section>
+
+            <section v-else class="contacts-view">
+              <div class="contacts-grid">
+                <button
+                  v-for="contact in contacts"
+                  :key="contact.id"
+                  class="contact-card"
+                  :class="{ active: selectedLeadId === contact.id }"
+                  type="button"
+                  @click="openLead(contact.id)"
+                >
+                  <div class="avatar">{{ initials(contact.name || contact.phone) }}</div>
+                  <div class="contact-main">
+                    <strong>{{ displayName(contact) }}</strong>
+                    <span>{{ contact.phone || 'Sem telefone' }}</span>
+                    <p>{{ contact.latestMessage?.body || 'Sem última mensagem' }}</p>
+                  </div>
+                  <div class="contact-tags">
+                    <span class="badge badge-neutral">{{ contact.currentStageLabel || contact.currentStage }}</span>
+                    <span
+                      v-for="tag in contact.tags || []"
+                      :key="tag.id"
+                      class="badge badge-blue"
+                    >
+                      {{ tag.name }}
+                    </span>
+                  </div>
+                </button>
+              </div>
+
+              <p v-if="!contacts.length && !loading" class="empty-state">
+                Nenhum contato encontrado.
+              </p>
+            </section>
+
+            <div v-if="loading" class="loading-overlay">
+              Carregando...
+            </div>
+          </section>
+        </main>
+
+        <aside class="lead-drawer" :class="{ open: drawerOpen }" aria-label="Detalhes do lead">
+          <template v-if="selectedLead">
+            <header class="drawer-header">
+              <div>
+                <p>Lead</p>
+                <h2>{{ displayName(selectedLead) }}</h2>
+                <span>{{ selectedLead.phone || 'Sem telefone' }}</span>
+              </div>
+              <button class="icon-button" type="button" aria-label="Fechar" @click="closeDrawer">×</button>
+            </header>
+
+            <section class="drawer-section">
+              <label class="field-label">Etapa</label>
+              <select v-model="selectedLead.currentStage" @change="moveLead(selectedLead.id, selectedLead.currentStage)">
+                <option v-for="stage in stages" :key="stage.slug" :value="stage.slug">
+                  {{ stage.label }}
+                </option>
+              </select>
+            </section>
+
+            <section class="drawer-section">
+              <div class="section-title">
+                <h3>Atribuição</h3>
+                <button class="primary-button small" type="button" @click="openAttributionModal">
+                  Atribuir
+                </button>
+              </div>
+
+              <article
+                v-for="attribution in selectedLead.attributions || []"
+                :key="attribution.id"
+                class="info-card"
+              >
+                <div class="badge-row">
+                  <span class="badge badge-green">{{ attribution.matchMethod }}</span>
+                  <span class="badge badge-blue">{{ attribution.matchConfidence }}</span>
+                </div>
+                <strong>{{ attribution.utmCampaign || attribution.campaignName || 'Sem campanha' }}</strong>
+                <span>{{ attribution.utmSource || attribution.sourcePlatform || 'Origem não informada' }}</span>
+              </article>
+
+              <p v-if="!selectedLead.attributions?.length" class="empty-state">
+                Nenhuma atribuição.
+              </p>
+            </section>
+
+            <section class="drawer-section">
+              <h3>Conversas</h3>
+              <article
+                v-for="conversation in selectedLead.conversations || []"
+                :key="conversation.id"
+                class="info-card"
+              >
+                <strong>{{ conversation.externalChatId }}</strong>
+                <span>{{ conversation.status }} · {{ formatDate(conversation.lastMessageAt) }}</span>
+              </article>
+            </section>
+
+            <section class="drawer-section">
+              <h3>Mensagens recentes</h3>
+              <div class="mini-chat">
+                <div
+                  v-for="message in lastMessages(selectedLead.messages)"
+                  :key="message.id"
+                  class="mini-message"
+                  :class="message.direction"
+                >
+                  <p>{{ message.body || messageTypeLabel(message) }}</p>
+                  <small>{{ formatDate(message.sentAt) }}</small>
+                </div>
+              </div>
+            </section>
+
+            <section class="drawer-section">
+              <h3>Histórico</h3>
+              <article
+                v-for="item in selectedLead.stageHistory || []"
+                :key="item.id"
+                class="info-card compact"
+              >
+                <strong>{{ item.fromStage || 'início' }} → {{ item.toStage }}</strong>
+                <span>{{ formatDate(item.changedAt) }}</span>
+              </article>
+            </section>
+          </template>
+
+          <div v-else class="drawer-empty">
+            Selecione um lead.
+          </div>
+        </aside>
+      </div>
+
+      <div v-if="attributionModalOpen" class="modal-backdrop">
+        <section class="modal">
+          <header class="modal-header">
+            <div>
+              <p>Atribuição manual</p>
+              <h2>{{ displayName(selectedLead) }}</h2>
+            </div>
+            <button class="icon-button" type="button" @click="closeAttributionModal">×</button>
+          </header>
+
+          <div class="modal-body">
+            <section class="modal-column">
+              <h3>Cliques candidatos</h3>
+              <div class="inline-search">
+                <input
+                  v-model="candidateSearch"
+                  type="search"
+                  placeholder="Buscar campanha, clickCode, fbclid..."
+                  @keydown.enter="loadAttributionCandidates"
+                />
+                <button class="secondary-button" type="button" @click="loadAttributionCandidates">
+                  Buscar
+                </button>
+              </div>
+
+              <div class="candidate-list">
+                <button
+                  v-for="candidate in attributionCandidates"
+                  :key="candidate.clickEventId"
+                  class="candidate-card"
+                  type="button"
+                  @click="saveCandidateAttribution(candidate.clickEventId)"
+                >
+                  <strong>{{ candidate.utmCampaign || candidate.trackingLink?.campaignName || candidate.clickCode }}</strong>
+                  <span>Código {{ candidate.clickCode }}</span>
+                  <span>{{ candidate.utmSource || 'origem não informada' }} · {{ formatDate(candidate.clickedAt) }}</span>
+                </button>
+
+                <p v-if="!attributionCandidates.length" class="empty-state">
+                  Nenhum candidato encontrado.
+                </p>
+              </div>
+            </section>
+
+            <section class="modal-column">
+              <h3>Sem clique</h3>
+              <label class="field-label">Plataforma</label>
+              <input v-model="manualAttribution.sourcePlatform" placeholder="meta, google, direct..." />
+
+              <label class="field-label">Campanha</label>
+              <input v-model="manualAttribution.campaignName" placeholder="Nome da campanha" />
+
+              <label class="field-label">UTM source</label>
+              <input v-model="manualAttribution.utmSource" placeholder="meta, google..." />
+
+              <label class="field-label">UTM campaign</label>
+              <input v-model="manualAttribution.utmCampaign" placeholder="campanha_x" />
+
+              <button class="primary-button" type="button" @click="saveManualAttribution">
+                Salvar atribuição
+              </button>
+            </section>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="./app.js"></script>
+  </body>
 </html>
