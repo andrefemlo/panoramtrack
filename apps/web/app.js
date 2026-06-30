@@ -604,6 +604,30 @@ createApp({
       return "Mensagem sem texto";
     },
 
+    isMediaMessage(message, mediaType) {
+      return message?.messageType === mediaType && !!message?.mediaUrl;
+    },
+
+    shouldRenderTextFallback(message) {
+      if (!message) return true;
+
+      const mediaTypes = ["image", "audio", "video", "document"];
+
+      if (!mediaTypes.includes(message.messageType)) {
+        return true;
+      }
+
+      return !message.mediaUrl;
+    },
+
+    shouldRenderMediaCaption(message) {
+      if (!message?.body) {
+        return false;
+      }
+
+      return ["image", "audio", "video", "document"].includes(message.messageType);
+    },
+
     documentLabel(message) {
       return message?.mediaFileName || message?.body || "Abrir documento";
     },
