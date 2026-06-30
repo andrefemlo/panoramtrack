@@ -1097,7 +1097,7 @@ export class WhatsappSyncService {
       "application/octet-stream";
 
     return {
-      mediaUrl: `data:${mimeType};base64,${rawBase64}`,
+      mediaUrl: `data:${this.normalizeDataUrlMimeType(mimeType)};base64,${rawBase64}`,
       mimeType,
       fileName:
         this.optionalString(data?.fileName) ||
@@ -1533,5 +1533,50 @@ export class WhatsappSyncService {
       messagesNotFoundInEvolution,
       messagesWithoutBase64,
     };
+  }
+
+  private extractProfilePictureUrl(item: any): string | null {
+    return (
+      this.optionalString(item?.profilePictureUrl) ||
+      this.optionalString(item?.profilePicUrl) ||
+      this.optionalString(item?.pictureUrl) ||
+      this.optionalString(item?.avatar) ||
+      this.optionalString(item?.profilePicture) ||
+      this.optionalString(item?.data?.profilePictureUrl) ||
+      this.optionalString(item?.data?.profilePicUrl) ||
+      this.optionalString(item?.contact?.profilePictureUrl) ||
+      this.optionalString(item?.contact?.profilePicUrl) ||
+      null
+    );
+  }
+
+  private normalizeDataUrlMimeType(mimeType: string): string {
+    const normalized = mimeType.toLowerCase();
+
+    if (normalized.includes("audio/ogg") || normalized.includes("opus")) {
+      return "audio/ogg";
+    }
+
+    if (normalized.includes("image/jpeg")) {
+      return "image/jpeg";
+    }
+
+    if (normalized.includes("image/png")) {
+      return "image/png";
+    }
+
+    if (normalized.includes("image/webp")) {
+      return "image/webp";
+    }
+
+    if (normalized.includes("video/mp4")) {
+      return "video/mp4";
+    }
+
+    if (normalized.includes("application/pdf")) {
+      return "application/pdf";
+    }
+
+    return mimeType.split(";")[0].trim() || "application/octet-stream";
   }
 }

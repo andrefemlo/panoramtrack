@@ -661,6 +661,36 @@ createApp({
       );
     },
 
+    normalizedAudioMimeType(message) {
+      const mimeType = message?.mediaMimeType || "";
+
+      if (mimeType.includes("ogg")) {
+        return "audio/ogg";
+      }
+
+      if (mimeType.includes("opus")) {
+        return "audio/ogg";
+      }
+
+      if (mimeType.includes("mpeg")) {
+        return "audio/mpeg";
+      }
+
+      if (mimeType.includes("mp3")) {
+        return "audio/mpeg";
+      }
+
+      if (mimeType.includes("mp4")) {
+        return "audio/mp4";
+      }
+
+      if (mimeType.includes("aac")) {
+        return "audio/aac";
+      }
+
+      return mimeType || "audio/ogg";
+    },
+
     isAudioMessage(message) {
       return message?.messageType === "audio" && !!message?.mediaUrl;
     },

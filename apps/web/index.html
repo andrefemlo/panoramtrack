@@ -157,8 +157,10 @@
                       <img v-if="isMediaMessage(message, 'image')" class="chat-image" :src="message.mediaUrl"
                         alt="Imagem da conversa" />
 
-                      <audio v-if="isMediaMessage(message, 'audio')" class="chat-audio" :src="message.mediaUrl"
-                        controls></audio>
+                      <audio v-if="isAudioMessage(message)" class="chat-audio" controls preload="metadata">
+                        <source :src="normalizedAudioSrc(message)" :type="normalizedAudioMimeType(message)" />
+                        Seu navegador não conseguiu reproduzir este áudio.
+                      </audio>
 
                       <video v-if="isMediaMessage(message, 'video')" class="chat-video" :src="message.mediaUrl"
                         controls></video>
