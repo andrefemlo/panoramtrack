@@ -116,6 +116,7 @@ model Lead {
   id             String   @id @default(cuid())
   clientId       String
   name           String?
+  whatsappLid    String?
   whatsappName     String?
   whatsappPushName String?
   phone          String
@@ -141,6 +142,7 @@ model Lead {
   @@unique([clientId, phone])
   @@index([clientId])
   @@index([phone])
+  @@index([clientId, whatsappLid])
   @@index([status])
   @@index([currentStage])
 }

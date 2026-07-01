@@ -74,6 +74,7 @@ export class EvolutionWebhookService {
     const pushName = normalized.pushName;
     const fromMe = normalized.fromMe;
     const sentAt = normalized.sentAt;
+    const whatsappLid = this.extractWhatsappLidFromPayload(data);
 
     if (!isIndividualContactChat(externalChatId)) {
       return {
@@ -96,13 +97,6 @@ export class EvolutionWebhookService {
       externalMessageId,
       fromMe,
     });
-
-    if (!leadPhone || !externalChatId) {
-      return {
-        status: "ignored",
-        reason: "missing_lead_phone_or_chat_id",
-      };
-    }
 
     const whatsappInstance = await this.prisma.whatsAppInstance.upsert({
       where: {
@@ -140,9 +134,14 @@ export class EvolutionWebhookService {
     });
 
     const leadUpdateData: {
-      name?: string;
-      whatsappPushName?: string;
+      name?: string | null;
+      whatsappPushName?: string | null;
+      whatsappLid?: string | null;
     } = {};
+
+    if (whatsappLid) {
+      leadUpdateData.whatsappLid = whatsappLid;
+    }
 
     if (contactName) {
       leadUpdateData.whatsappPushName = contactName;
@@ -171,6 +170,7 @@ export class EvolutionWebhookService {
             clientId: client.id,
             name: contactName,
             whatsappPushName: contactName,
+            whatsappLid,
             phone: leadPhone,
             source: "whatsapp",
             firstMessage: messageText || null,
@@ -202,6 +202,15 @@ export class EvolutionWebhookService {
         lastMessageAt: sentAt,
       },
     });
+
+    if (!lead.profilePictureUrl) {
+      void this.hydrateLeadProfileFromEvolution({
+        instanceName,
+        leadId: lead.id,
+        phone: leadPhone,
+        conversationId: conversation.id,
+      });
+    }
 
     const existingMessage = await this.prisma.message.findUnique({
       where: {
@@ -477,6 +486,486 @@ export class EvolutionWebhookService {
         matchConfidence: params.matchConfidence,
       },
     });
+  }
+
+  private async hydrateLeadProfileFromEvolution(params: {
+    instanceName: string;
+    leadId: string;
+    phone: string;
+    conversationId?: string | null;
+  }) {
+    const baseUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+
+    if (!baseUrl || !apiKey) {
+      return;
+    }
+
+    const encodedInstanceName = encodeURIComponent(params.instanceName);
+
+    const attempts = [
+      {
+        path: `/chat/fetchProfilePictureUrl/${encodedInstanceName}`,
+        body: {
+          number: params.phone,
+        },
+      },
+      {
+        path: `/chat/fetchProfilePictureUrl/${encodedInstanceName}`,
+        body: {
+          remoteJid: `${params.phone}@s.whatsapp.net`,
+        },
+      },
+      {
+        path: `/chat/findContacts/${encodedInstanceName}`,
+        body: {
+          where: {
+            remoteJid: `${params.phone}@s.whatsapp.net`,
+          },
+        },
+      },
+      {
+        path: `/chat/findContacts/${encodedInstanceName}`,
+        body: {
+          where: {
+            id: `${params.phone}@s.whatsapp.net`,
+          },
+        },
+      },
+    ];
+
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(
+          `${baseUrl.replace(/\/$/, "")}${attempt.path}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: apiKey,
+            },
+            body: JSON.stringify(attempt.body),
+          },
+        );
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const result = await response.json();
+        const profilePictureUrl = this.extractProfilePictureUrl(result);
+        const whatsappName = this.extractProfileName(result);
+
+        const updateData: {
+          profilePictureUrl?: string;
+          whatsappName?: string;
+        } = {};
+
+        if (profilePictureUrl) {
+          updateData.profilePictureUrl = profilePictureUrl;
+        }
+
+        if (whatsappName) {
+          updateData.whatsappName = whatsappName;
+        }
+
+        if (!Object.keys(updateData).length) {
+          continue;
+        }
+
+        await this.prisma.lead.update({
+          where: {
+            id: params.leadId,
+          },
+          data: updateData,
+        });
+
+        this.realtimeEvents.emit({
+          type: "contact.updated",
+          conversationId: params.conversationId || null,
+          leadId: params.leadId,
+          sentAt: new Date().toISOString(),
+        });
+
+        return;
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  private extractProfilePictureUrl(value: any): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const result = this.extractProfilePictureUrl(item);
+
+        if (result) {
+          return result;
+        }
+      }
+
+      return null;
+    }
+
+    const direct = this.optionalString(
+      value?.profilePictureUrl ||
+        value?.profilePicUrl ||
+        value?.pictureUrl ||
+        value?.picture ||
+        value?.url ||
+        value?.avatar ||
+        value?.imgUrl ||
+        value?.image ||
+        value?.data?.profilePictureUrl ||
+        value?.data?.profilePicUrl ||
+        value?.data?.pictureUrl ||
+        value?.data?.picture ||
+        value?.data?.url,
+    );
+
+    if (direct) {
+      return direct;
+    }
+
+    if (value?.data) {
+      return this.extractProfilePictureUrl(value.data);
+    }
+
+    if (value?.contact) {
+      return this.extractProfilePictureUrl(value.contact);
+    }
+
+    return null;
+  }
+
+  private extractProfileName(value: any): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const result = this.extractProfileName(item);
+
+        if (result) {
+          return result;
+        }
+      }
+
+      return null;
+    }
+
+    const name = this.cleanContactName(
+      value?.name ||
+        value?.pushName ||
+        value?.verifiedName ||
+        value?.notify ||
+        value?.displayName ||
+        value?.contactName ||
+        value?.profileName ||
+        value?.data?.name ||
+        value?.data?.pushName ||
+        value?.data?.verifiedName ||
+        value?.data?.notify ||
+        value?.contact?.name ||
+        value?.contact?.pushName,
+    );
+
+    if (name) {
+      return name;
+    }
+
+    if (value?.data) {
+      return this.extractProfileName(value.data);
+    }
+
+    if (value?.contact) {
+      return this.extractProfileName(value.contact);
+    }
+
+    return null;
+  }
+
+  private isContactOrChatEvent(event: string | null): boolean {
+    const normalized = String(event || "").toLowerCase();
+
+    return [
+      "contacts.update",
+      "contacts.upsert",
+      "contacts.set",
+      "chats.update",
+      "chats.upsert",
+      "chats.set",
+    ].includes(normalized);
+  }
+
+  private async handleContactOrChatEvent(params: {
+    clientId: string;
+    payload: any;
+    event: string | null;
+  }) {
+    const items = this.extractContactEventItems(params.payload);
+
+    let processed = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const item of items) {
+      const remoteJid = this.optionalString(
+        item?.remoteJid ||
+          item?.id ||
+          item?.jid ||
+          item?.key?.remoteJid ||
+          item?.chatId,
+      );
+
+      if (!remoteJid) {
+        skipped += 1;
+        continue;
+      }
+
+      if (!this.isIndividualPhoneJid(remoteJid) && !this.isLidJid(remoteJid)) {
+        skipped += 1;
+        continue;
+      }
+
+      const phone = this.isIndividualPhoneJid(remoteJid)
+        ? this.phoneFromRemoteJid(remoteJid)
+        : null;
+
+      const whatsappLid = this.isLidJid(remoteJid) ? remoteJid : null;
+
+      const whatsappName = this.cleanContactName(
+        item?.name ||
+          item?.pushName ||
+          item?.verifiedName ||
+          item?.notify ||
+          item?.subject ||
+          item?.displayName ||
+          item?.contactName ||
+          item?.profileName,
+      );
+
+      const profilePictureUrl = this.optionalString(
+        item?.profilePicUrl ||
+          item?.profilePictureUrl ||
+          item?.pictureUrl ||
+          item?.picture ||
+          item?.profilePicture ||
+          item?.avatar ||
+          item?.imgUrl ||
+          item?.image,
+      );
+
+      const existingLead = await this.findLeadByPhoneOrLid({
+        clientId: params.clientId,
+        phone,
+        whatsappLid,
+      });
+
+      if (!existingLead) {
+        skipped += 1;
+        continue;
+      }
+
+      const data: {
+        whatsappName?: string | null;
+        profilePictureUrl?: string | null;
+        whatsappLid?: string | null;
+      } = {};
+
+      if (whatsappName && whatsappName !== existingLead.whatsappName) {
+        data.whatsappName = whatsappName;
+      }
+
+      if (
+        profilePictureUrl !== null &&
+        profilePictureUrl !== existingLead.profilePictureUrl
+      ) {
+        data.profilePictureUrl = profilePictureUrl;
+      }
+
+      if (whatsappLid && whatsappLid !== existingLead.whatsappLid) {
+        data.whatsappLid = whatsappLid;
+      }
+
+      if (!Object.keys(data).length) {
+        processed += 1;
+        continue;
+      }
+
+      await this.prisma.lead.update({
+        where: {
+          id: existingLead.id,
+        },
+        data,
+      });
+
+      const conversationId = await this.findConversationIdByLeadId(
+        existingLead.id,
+      );
+
+      this.realtimeEvents.emit({
+        type: "contact.updated",
+        conversationId,
+        leadId: existingLead.id,
+        sentAt: new Date().toISOString(),
+      });
+
+      processed += 1;
+      updated += 1;
+    }
+
+    return {
+      processed,
+      updated,
+      skipped,
+    };
+  }
+
+  private async findLeadByPhoneOrLid(params: {
+    clientId: string;
+    phone?: string | null;
+    whatsappLid?: string | null;
+  }) {
+    const or: Prisma.LeadWhereInput[] = [];
+
+    if (params.phone) {
+      or.push({
+        phone: params.phone,
+      });
+    }
+
+    if (params.whatsappLid) {
+      or.push({
+        whatsappLid: params.whatsappLid,
+      });
+    }
+
+    if (!or.length) {
+      return null;
+    }
+
+    return this.prisma.lead.findFirst({
+      where: {
+        clientId: params.clientId,
+        OR: or,
+      },
+    });
+  }
+
+  private extractContactEventItems(payload: any): any[] {
+    const data = payload?.data;
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (data && typeof data === "object") {
+      return [data];
+    }
+
+    if (Array.isArray(payload?.contacts)) {
+      return payload.contacts;
+    }
+
+    if (Array.isArray(payload?.chats)) {
+      return payload.chats;
+    }
+
+    return [];
+  }
+
+  private phoneFromRemoteJid(remoteJid: string | null): string | null {
+    if (!remoteJid) {
+      return null;
+    }
+
+    const raw = remoteJid.split("@")[0];
+    const phone = raw.replace(/\D/g, "");
+
+    return phone || null;
+  }
+
+  private cleanContactName(value: unknown): string | null {
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const name = value.trim();
+
+    if (!name) {
+      return null;
+    }
+
+    const lowered = name.toLowerCase();
+
+    if (
+      lowered.includes("@s.whatsapp.net") ||
+      lowered.includes("@g.us") ||
+      lowered.includes("@newsletter") ||
+      lowered === "status" ||
+      lowered.startsWith("meu numero") ||
+      lowered.startsWith("meu número")
+    ) {
+      return null;
+    }
+
+    if (/^\+?\d{8,15}$/.test(name.replace(/\s+/g, ""))) {
+      return null;
+    }
+
+    return name;
+  }
+
+  private async findConversationIdByLeadId(
+    leadId: string,
+  ): Promise<string | null> {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        leadId,
+        externalChatId: {
+          endsWith: "@s.whatsapp.net",
+        },
+      },
+      orderBy: {
+        lastMessageAt: "desc",
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return conversation?.id || null;
+  }
+
+  private extractWhatsappLidFromPayload(payload: any): string | null {
+    const candidates = [
+      payload?.data?.key?.remoteJid,
+      payload?.data?.key?.remoteJidAlt,
+      payload?.data?.key?.participant,
+      payload?.data?.key?.participantAlt,
+      payload?.data?.remoteJid,
+      payload?.data?.remoteJidAlt,
+    ];
+
+    const lid = candidates.find(
+      (value) => typeof value === "string" && value.endsWith("@lid"),
+    );
+
+    return lid || null;
+  }
+
+  private isLidJid(remoteJid: string | null): boolean {
+    return !!remoteJid && remoteJid.toLowerCase().endsWith("@lid");
+  }
+
+  private isIndividualPhoneJid(remoteJid: string | null): boolean {
+    return !!remoteJid && remoteJid.toLowerCase().endsWith("@s.whatsapp.net");
   }
 
   private extractInstanceName(payload: any): string {
@@ -935,223 +1424,5 @@ export class EvolutionWebhookService {
     }
 
     return false;
-  }
-  private isContactOrChatEvent(event: string | null): boolean {
-    const normalized = String(event || "").toLowerCase();
-
-    return [
-      "contacts.update",
-      "contacts.upsert",
-      "contacts.set",
-      "chats.update",
-      "chats.upsert",
-      "chats.set",
-    ].includes(normalized);
-  }
-
-  private async handleContactOrChatEvent(params: {
-    clientId: string;
-    payload: any;
-    event: string | null;
-  }) {
-    const items = this.extractContactEventItems(params.payload);
-
-    let processed = 0;
-    let updated = 0;
-    let skipped = 0;
-
-    for (const item of items) {
-      const remoteJid = this.optionalString(
-        item?.remoteJid ||
-          item?.id ||
-          item?.jid ||
-          item?.key?.remoteJid ||
-          item?.chatId,
-      );
-
-      if (!this.isIndividualContactChat(remoteJid)) {
-        skipped += 1;
-        continue;
-      }
-
-      const phone = this.phoneFromRemoteJid(remoteJid);
-
-      if (!phone) {
-        skipped += 1;
-        continue;
-      }
-
-      const whatsappName = this.cleanContactName(
-        item?.name ||
-          item?.pushName ||
-          item?.verifiedName ||
-          item?.notify ||
-          item?.subject,
-      );
-
-      const profilePictureUrl = this.optionalString(
-        item?.profilePicUrl ||
-          item?.profilePictureUrl ||
-          item?.picture ||
-          item?.profilePicture,
-      );
-
-      const existingLead = await this.prisma.lead.findUnique({
-        where: {
-          clientId_phone: {
-            clientId: params.clientId,
-            phone,
-          },
-        },
-      });
-
-      if (!existingLead) {
-        skipped += 1;
-        continue;
-      }
-
-      const data: {
-        whatsappName?: string | null;
-        profilePictureUrl?: string | null;
-      } = {};
-
-      if (whatsappName && whatsappName !== existingLead.whatsappName) {
-        data.whatsappName = whatsappName;
-      }
-
-      if (
-        profilePictureUrl !== undefined &&
-        profilePictureUrl !== existingLead.profilePictureUrl
-      ) {
-        data.profilePictureUrl = profilePictureUrl;
-      }
-
-      if (!Object.keys(data).length) {
-        processed += 1;
-        continue;
-      }
-
-      await this.prisma.lead.update({
-        where: {
-          id: existingLead.id,
-        },
-        data,
-      });
-
-      const conversationId = await this.findConversationIdByLeadId(
-        existingLead.id,
-      );
-
-      this.realtimeEvents.emit({
-        type: "contact.updated",
-        conversationId,
-        leadId: existingLead.id,
-        sentAt: new Date().toISOString(),
-      });
-
-      processed += 1;
-      updated += 1;
-
-      await this.realtimeEvents.emit({
-        type: "conversation.updated",
-        conversationId: await this.findConversationIdByLeadId(existingLead.id),
-        leadId: existingLead.id,
-        sentAt: new Date().toISOString(),
-      } as any);
-
-      processed += 1;
-      updated += 1;
-    }
-
-    return {
-      processed,
-      updated,
-      skipped,
-    };
-  }
-
-  private extractContactEventItems(payload: any): any[] {
-    const data = payload?.data;
-
-    if (Array.isArray(data)) {
-      return data;
-    }
-
-    if (data && typeof data === "object") {
-      return [data];
-    }
-
-    if (Array.isArray(payload?.contacts)) {
-      return payload.contacts;
-    }
-
-    if (Array.isArray(payload?.chats)) {
-      return payload.chats;
-    }
-
-    return [];
-  }
-
-  private phoneFromRemoteJid(remoteJid: string | null): string | null {
-    if (!remoteJid) {
-      return null;
-    }
-
-    const raw = remoteJid.split("@")[0];
-    const phone = raw.replace(/\D/g, "");
-
-    return phone || null;
-  }
-
-  private cleanContactName(value: unknown): string | null {
-    if (typeof value !== "string") {
-      return null;
-    }
-
-    const name = value.trim();
-
-    if (!name) {
-      return null;
-    }
-
-    const lowered = name.toLowerCase();
-
-    if (
-      lowered.includes("@s.whatsapp.net") ||
-      lowered.includes("@g.us") ||
-      lowered.includes("@newsletter") ||
-      lowered === "status" ||
-      lowered.startsWith("meu numero") ||
-      lowered.startsWith("meu número")
-    ) {
-      return null;
-    }
-
-    if (/^\+?\d{8,15}$/.test(name.replace(/\s+/g, ""))) {
-      return null;
-    }
-
-    return name;
-  }
-
-  private async findConversationIdByLeadId(
-    leadId: string,
-  ): Promise<string | null> {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: {
-        leadId,
-        externalChatId: {
-          endsWith: "@s.whatsapp.net",
-        },
-      },
-      orderBy: {
-        lastMessageAt: "desc",
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    return conversation?.id || null;
   }
 }
