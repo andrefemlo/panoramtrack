@@ -439,8 +439,11 @@ export class ContactsService {
     return {
       id: contact.id,
       name: contact.name,
+      whatsappName: contact.whatsappName,
+      whatsappPushName: contact.whatsappPushName,
       phone: contact.phone,
       email: contact.email,
+      profilePictureUrl: contact.profilePictureUrl,
       status: contact.status,
       source: contact.source,
       currentStage,

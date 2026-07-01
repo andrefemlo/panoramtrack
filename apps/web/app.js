@@ -46,8 +46,7 @@ createApp({
         { view: "contacts", label: "Contatos", icon: "◎" },
       ],
       search: "",
-      pollingTimer: null,
-      isPolling: false,
+      eventsSource: null,
       selectedConversation: null,
       selectedConversationId: null,
       selectedLead: null,
@@ -89,11 +88,11 @@ createApp({
   mounted() {
     this.checkHealth();
     this.refreshActiveView();
-    this.startPolling();
+    this.connectRealtimeEvents();
   },
 
   beforeUnmount() {
-    this.stopPolling();
+    this.disconnectRealtimeEvents();
   },
 
   methods: {
@@ -753,7 +752,7 @@ createApp({
       return !this.isMediaMessage(message);
     },
 
-    isMediaMessage(message, mediaType) {
+    isMediaMessageType(message, mediaType) {
       return message?.messageType === mediaType && !!message?.mediaUrl;
     },
 
@@ -987,57 +986,107 @@ createApp({
       return digits;
     },
 
-    startPolling() {
-      this.stopPolling();
+    // startPolling() {
+    //   this.stopPolling();
 
-      this.pollingTimer = window.setInterval(() => {
-        this.pollActiveView();
-      }, 5000);
+    //   this.pollingTimer = window.setInterval(() => {
+    //     this.pollActiveView();
+    //   }, 5000);
+    // },
+
+    // stopPolling() {
+    //   if (this.pollingTimer) {
+    //     window.clearInterval(this.pollingTimer);
+    //     this.pollingTimer = null;
+    //   }
+    // },
+
+    // async pollActiveView() {
+    //   if (this.isPolling || this.loading) {
+    //     return;
+    //   }
+
+    //   if (document.hidden) {
+    //     return;
+    //   }
+
+    //   this.isPolling = true;
+
+    //   try {
+    //     if (this.view === "conversations") {
+    //       const currentConversationId = this.selectedConversationId;
+
+    //       await this.loadConversations({ silent: true });
+
+    //       if (currentConversationId) {
+    //         await this.refreshConversationMessages(currentConversationId);
+    //       }
+
+    //       return;
+    //     }
+
+    //     if (this.view === "contacts") {
+    //       await this.loadContacts();
+    //       return;
+    //     }
+
+    //     await this.loadPipeline();
+    //   } catch (error) {
+    //     console.error(error);
+    //   } finally {
+    //     this.isPolling = false;
+    //   }
+    // },
+
+    connectRealtimeEvents() {
+      this.disconnectRealtimeEvents();
+
+      const source = new EventSource(`${API_BASE}/conversations/events`);
+
+      source.addEventListener("message.created", async (event) => {
+        const data = JSON.parse(event.data || "{}");
+        await this.handleRealtimeConversationEvent(data);
+      });
+
+      source.addEventListener("conversation.updated", async (event) => {
+        const data = JSON.parse(event.data || "{}");
+        await this.handleRealtimeConversationEvent(data);
+      });
+
+      source.onerror = (error) => {
+        console.warn("Realtime events connection error", error);
+      };
+
+      this.eventsSource = source;
     },
 
-    stopPolling() {
-      if (this.pollingTimer) {
-        window.clearInterval(this.pollingTimer);
-        this.pollingTimer = null;
+    disconnectRealtimeEvents() {
+      if (this.eventsSource) {
+        this.eventsSource.close();
+        this.eventsSource = null;
       }
     },
 
-    async pollActiveView() {
-      if (this.isPolling || this.loading) {
+    async handleRealtimeConversationEvent(event) {
+      if (!event?.conversationId) {
         return;
       }
 
-      if (document.hidden) {
+      if (this.view === "conversations") {
+        await this.loadConversations({ silent: true });
+
+        if (this.selectedConversationId === event.conversationId) {
+          await this.refreshConversationMessages(event.conversationId);
+        }
+
         return;
       }
 
-      this.isPolling = true;
-
-      try {
-        if (this.view === "conversations") {
-          const currentConversationId = this.selectedConversationId;
-
-          await this.loadConversations({ silent: true });
-
-          if (currentConversationId) {
-            await this.refreshConversationMessages(currentConversationId);
-          }
-
-          return;
-        }
-
-        if (this.view === "contacts") {
-          await this.loadContacts();
-          return;
-        }
-
-        await this.loadPipeline();
-      } catch (error) {
-        console.error(error);
-      } finally {
-        this.isPolling = false;
+      if (this.selectedLeadId && event.leadId === this.selectedLeadId) {
+        await this.openLead(this.selectedLeadId);
       }
     },
+
     async refreshConversationMessages(conversationId) {
       if (!conversationId) {
         return;
