@@ -112,6 +112,9 @@ export class ConversationsService {
         where,
         orderBy: [
           {
+            pinnedAt: "desc",
+          },
+          {
             lastMessageAt: "desc",
           },
           {
@@ -139,61 +142,9 @@ export class ConversationsService {
         take,
         skip,
       },
-      conversations: conversations.map((conversation) => {
-        const latestMessage = conversation.messages[0] || null;
-        const lead = conversation.lead;
-
-        return {
-          id: conversation.id,
-          clientId: conversation.clientId,
-          leadId: conversation.leadId,
-          channel: conversation.channel,
-          externalChatId: conversation.externalChatId,
-          leadPhone: conversation.leadPhone,
-          status: conversation.status,
-          lastMessageAt: conversation.lastMessageAt,
-          createdAt: conversation.createdAt,
-          updatedAt: conversation.updatedAt,
-
-          contact: {
-            id: lead.id,
-            name: lead.name,
-            phone: lead.phone,
-            email: lead.email,
-            source: lead.source,
-            currentStage: lead.currentStage || "new_lead",
-            status: lead.status,
-          },
-
-          whatsappInstance: conversation.whatsappInstance
-            ? {
-                id: conversation.whatsappInstance.id,
-                name: conversation.whatsappInstance.name,
-                phoneNumber: conversation.whatsappInstance.phoneNumber,
-                status: conversation.whatsappInstance.status,
-              }
-            : null,
-
-          latestMessage: latestMessage
-            ? {
-                id: latestMessage.id,
-                externalMessageId: latestMessage.externalMessageId,
-                direction: latestMessage.direction,
-                messageType: latestMessage.messageType,
-                body: latestMessage.body,
-                mediaUrl: latestMessage.mediaUrl,
-                mediaMimeType: latestMessage.mediaMimeType,
-                mediaFileName: latestMessage.mediaFileName,
-                fromPhone: latestMessage.fromPhone,
-                toPhone: latestMessage.toPhone,
-                sentAt: latestMessage.sentAt,
-                createdAt: latestMessage.createdAt,
-              }
-            : null,
-
-          unreadCount: 0,
-        };
-      }),
+      conversations: conversations.map((conversation) =>
+        this.formatConversation(conversation),
+      ),
     };
   }
 
@@ -265,7 +216,14 @@ export class ConversationsService {
         channel: conversation.channel,
         externalChatId: conversation.externalChatId,
         leadPhone: conversation.leadPhone,
+        leadName: conversation.lead.name,
+        profilePictureUrl: conversation.lead.profilePictureUrl,
         status: conversation.status,
+        unreadCount: conversation.unreadCount || 0,
+        readAt: conversation.readAt,
+        archivedAt: conversation.archivedAt,
+        pinnedAt: conversation.pinnedAt,
+        assignedUserId: conversation.assignedUserId,
         lastMessageAt: conversation.lastMessageAt,
         createdAt: conversation.createdAt,
         updatedAt: conversation.updatedAt,
@@ -275,6 +233,7 @@ export class ConversationsService {
           name: conversation.lead.name,
           phone: conversation.lead.phone,
           email: conversation.lead.email,
+          profilePictureUrl: conversation.lead.profilePictureUrl,
           source: conversation.lead.source,
           currentStage: conversation.lead.currentStage || "new_lead",
           status: conversation.lead.status,
@@ -436,6 +395,7 @@ export class ConversationsService {
       : mediaUrl;
 
     const storedMediaUrl = mediaUrl || mediaBase64 || null;
+
     const evolutionResponse = await this.callEvolution({
       instanceName: context.instanceName,
       endpoint: "sendMedia",
@@ -533,6 +493,33 @@ export class ConversationsService {
 
     const externalMessageId = this.extractEvolutionMessageId(evolutionResponse);
 
+    const existingMessage = await this.prisma.message.findUnique({
+      where: {
+        clientId_externalMessageId: {
+          clientId: context.client.id,
+          externalMessageId,
+        },
+      },
+    });
+
+    if (existingMessage) {
+      await this.prisma.conversation.update({
+        where: {
+          id: context.conversation.id,
+        },
+        data: {
+          lastMessageAt: existingMessage.sentAt,
+        },
+      });
+
+      return {
+        status: "ok",
+        duplicated: true,
+        message: existingMessage,
+        evolutionResponse,
+      };
+    }
+
     const message = await this.prisma.message.create({
       data: {
         clientId: context.client.id,
@@ -559,6 +546,7 @@ export class ConversationsService {
 
     return {
       status: "ok",
+      duplicated: false,
       message,
       evolutionResponse,
     };
@@ -679,6 +667,242 @@ export class ConversationsService {
       message,
       evolutionResponse,
     };
+  }
+
+  async getConversation(conversationId: string) {
+    const client = await this.getDemoClient();
+
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        clientId: client.id,
+        externalChatId: {
+          endsWith: "@s.whatsapp.net",
+        },
+      },
+      include: {
+        lead: {
+          include: {
+            attributions: {
+              orderBy: {
+                attributedAt: "desc",
+              },
+              take: 5,
+            },
+            tagAssignments: {
+              include: {
+                tag: true,
+              },
+            },
+          },
+        },
+        whatsappInstance: true,
+        messages: {
+          orderBy: {
+            sentAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    return this.formatConversation(conversation);
+  }
+
+  async markConversationAsRead(conversationId: string) {
+    const client = await this.getDemoClient();
+
+    const conversation = await this.ensureConversation(
+      client.id,
+      conversationId,
+    );
+
+    const updated = await this.prisma.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        unreadCount: 0,
+        readAt: new Date(),
+      },
+      include: {
+        lead: true,
+        whatsappInstance: true,
+        messages: {
+          orderBy: {
+            sentAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    });
+
+    return this.formatConversation(updated);
+  }
+
+  async archiveConversation(
+    conversationId: string,
+    body: {
+      archived?: unknown;
+    },
+  ) {
+    const client = await this.getDemoClient();
+
+    const conversation = await this.ensureConversation(
+      client.id,
+      conversationId,
+    );
+
+    const archived = body.archived !== false;
+
+    const updated = await this.prisma.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        archivedAt: archived ? new Date() : null,
+        status: archived ? "archived" : conversation.status,
+      },
+      include: {
+        lead: true,
+        whatsappInstance: true,
+        messages: {
+          orderBy: {
+            sentAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    });
+
+    return this.formatConversation(updated);
+  }
+
+  async pinConversation(
+    conversationId: string,
+    body: {
+      pinned?: unknown;
+    },
+  ) {
+    const client = await this.getDemoClient();
+
+    const conversation = await this.ensureConversation(
+      client.id,
+      conversationId,
+    );
+
+    const pinned = body.pinned !== false;
+
+    const updated = await this.prisma.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        pinnedAt: pinned ? new Date() : null,
+      },
+      include: {
+        lead: true,
+        whatsappInstance: true,
+        messages: {
+          orderBy: {
+            sentAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    });
+
+    return this.formatConversation(updated);
+  }
+
+  async updateConversationStatus(
+    conversationId: string,
+    body: {
+      status?: unknown;
+    },
+  ) {
+    const client = await this.getDemoClient();
+
+    const conversation = await this.ensureConversation(
+      client.id,
+      conversationId,
+    );
+
+    const status = this.requiredString(body.status, "status");
+
+    const allowedStatuses = ["open", "closed", "pending", "archived"];
+
+    if (!allowedStatuses.includes(status)) {
+      throw new BadRequestException("Invalid conversation status");
+    }
+
+    const updated = await this.prisma.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        status,
+        archivedAt:
+          status === "archived"
+            ? new Date()
+            : status === "open"
+              ? null
+              : conversation.archivedAt,
+      },
+      include: {
+        lead: true,
+        whatsappInstance: true,
+        messages: {
+          orderBy: {
+            sentAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    });
+
+    return this.formatConversation(updated);
+  }
+
+  async assignConversation(
+    conversationId: string,
+    body: {
+      assignedUserId?: unknown;
+    },
+  ) {
+    const client = await this.getDemoClient();
+
+    const conversation = await this.ensureConversation(
+      client.id,
+      conversationId,
+    );
+
+    const assignedUserId = this.optionalString(body.assignedUserId);
+
+    const updated = await this.prisma.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        assignedUserId,
+      },
+      include: {
+        lead: true,
+        whatsappInstance: true,
+        messages: {
+          orderBy: {
+            sentAt: "desc",
+          },
+          take: 1,
+        },
+      },
+    });
+
+    return this.formatConversation(updated);
   }
 
   private async getConversationContext(conversationId: string) {
@@ -887,6 +1111,92 @@ export class ConversationsService {
     );
   }
 
+  private async ensureConversation(clientId: string, conversationId: string) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        clientId,
+        externalChatId: {
+          endsWith: "@s.whatsapp.net",
+        },
+      },
+    });
+
+    if (!conversation) {
+      throw new NotFoundException("Conversation not found");
+    }
+
+    return conversation;
+  }
+
+  private formatConversation(conversation: any) {
+    const latestMessage = conversation.messages?.[0] || null;
+    const lead = conversation.lead || null;
+
+    return {
+      id: conversation.id,
+      clientId: conversation.clientId,
+      leadId: conversation.leadId,
+      channel: conversation.channel,
+      externalChatId: conversation.externalChatId,
+      leadPhone: lead?.phone || conversation.leadPhone,
+      leadName: lead?.name || null,
+      profilePictureUrl: lead?.profilePictureUrl || null,
+      status: conversation.status,
+      unreadCount: conversation.unreadCount || 0,
+      readAt: conversation.readAt,
+      archivedAt: conversation.archivedAt,
+      pinnedAt: conversation.pinnedAt,
+      assignedUserId: conversation.assignedUserId,
+      lastMessageAt: conversation.lastMessageAt,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+
+      contact: lead
+        ? {
+            id: lead.id,
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            profilePictureUrl: lead.profilePictureUrl || null,
+            source: lead.source,
+            currentStage: lead.currentStage || "new_lead",
+            status: lead.status,
+            attributions: lead.attributions || [],
+            tags:
+              lead.tagAssignments?.map((assignment: any) => assignment.tag) ||
+              [],
+          }
+        : null,
+
+      whatsappInstance: conversation.whatsappInstance
+        ? {
+            id: conversation.whatsappInstance.id,
+            name: conversation.whatsappInstance.name,
+            phoneNumber: conversation.whatsappInstance.phoneNumber,
+            status: conversation.whatsappInstance.status,
+          }
+        : null,
+
+      latestMessage: latestMessage
+        ? {
+            id: latestMessage.id,
+            externalMessageId: latestMessage.externalMessageId,
+            direction: latestMessage.direction,
+            messageType: latestMessage.messageType,
+            body: latestMessage.body,
+            mediaUrl: latestMessage.mediaUrl,
+            mediaMimeType: latestMessage.mediaMimeType,
+            mediaFileName: latestMessage.mediaFileName,
+            fromPhone: latestMessage.fromPhone,
+            toPhone: latestMessage.toPhone,
+            sentAt: latestMessage.sentAt,
+            createdAt: latestMessage.createdAt,
+          }
+        : null,
+    };
+  }
+
   private requiredString(value: unknown, fieldName: string): string {
     if (typeof value !== "string" || !value.trim()) {
       throw new BadRequestException(`${fieldName} is required`);
@@ -938,311 +1248,5 @@ export class ConversationsService {
     }
 
     return date;
-  }
-
-  async getConversation(conversationId: string) {
-    const client = await this.getDemoClient();
-
-    const conversation = await this.prisma.conversation.findFirst({
-      where: {
-        id: conversationId,
-        clientId: client.id,
-        externalChatId: {
-          endsWith: "@s.whatsapp.net",
-        },
-      },
-      include: {
-        lead: {
-          include: {
-            attributions: {
-              orderBy: {
-                attributedAt: "desc",
-              },
-              take: 5,
-            },
-            tagAssignments: {
-              include: {
-                tag: true,
-              },
-            },
-          },
-        },
-        whatsappInstance: true,
-        messages: {
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException("Conversation not found");
-    }
-
-    return this.formatConversation(conversation);
-  }
-
-  async markConversationAsRead(conversationId: string) {
-    const client = await this.getDemoClient();
-
-    const conversation = await this.ensureConversation(
-      client.id,
-      conversationId,
-    );
-
-    const updated = await this.prisma.conversation.update({
-      where: {
-        id: conversation.id,
-      },
-      data: {
-        unreadCount: 0,
-        readAt: new Date(),
-      },
-      include: {
-        lead: true,
-        whatsappInstance: true,
-        messages: {
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
-
-    return this.formatConversation(updated);
-  }
-
-  async archiveConversation(
-    conversationId: string,
-    body: {
-      archived?: unknown;
-    },
-  ) {
-    const client = await this.getDemoClient();
-    const conversation = await this.ensureConversation(
-      client.id,
-      conversationId,
-    );
-    const archived = body.archived !== false;
-
-    const updated = await this.prisma.conversation.update({
-      where: {
-        id: conversation.id,
-      },
-      data: {
-        archivedAt: archived ? new Date() : null,
-      },
-      include: {
-        lead: true,
-        whatsappInstance: true,
-        messages: {
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
-
-    return this.formatConversation(updated);
-  }
-
-  async pinConversation(
-    conversationId: string,
-    body: {
-      pinned?: unknown;
-    },
-  ) {
-    const client = await this.getDemoClient();
-    const conversation = await this.ensureConversation(
-      client.id,
-      conversationId,
-    );
-    const pinned = body.pinned !== false;
-
-    const updated = await this.prisma.conversation.update({
-      where: {
-        id: conversation.id,
-      },
-      data: {
-        pinnedAt: pinned ? new Date() : null,
-      },
-      include: {
-        lead: true,
-        whatsappInstance: true,
-        messages: {
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
-
-    return this.formatConversation(updated);
-  }
-
-  async updateConversationStatus(
-    conversationId: string,
-    body: {
-      status?: unknown;
-    },
-  ) {
-    const client = await this.getDemoClient();
-    const conversation = await this.ensureConversation(
-      client.id,
-      conversationId,
-    );
-    const status = this.requiredString(body.status, "status");
-
-    const allowedStatuses = ["open", "closed", "pending", "archived"];
-
-    if (!allowedStatuses.includes(status)) {
-      throw new BadRequestException("Invalid conversation status");
-    }
-
-    const updated = await this.prisma.conversation.update({
-      where: {
-        id: conversation.id,
-      },
-      data: {
-        status,
-        archivedAt:
-          status === "archived" ? new Date() : conversation.archivedAt,
-      },
-      include: {
-        lead: true,
-        whatsappInstance: true,
-        messages: {
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
-
-    return this.formatConversation(updated);
-  }
-
-  async assignConversation(
-    conversationId: string,
-    body: {
-      assignedUserId?: unknown;
-    },
-  ) {
-    const client = await this.getDemoClient();
-    const conversation = await this.ensureConversation(
-      client.id,
-      conversationId,
-    );
-    const assignedUserId = this.optionalString(body.assignedUserId);
-
-    const updated = await this.prisma.conversation.update({
-      where: {
-        id: conversation.id,
-      },
-      data: {
-        assignedUserId,
-      },
-      include: {
-        lead: true,
-        whatsappInstance: true,
-        messages: {
-          orderBy: {
-            sentAt: "desc",
-          },
-          take: 1,
-        },
-      },
-    });
-
-    return this.formatConversation(updated);
-  }
-
-  private async ensureConversation(clientId: string, conversationId: string) {
-    const conversation = await this.prisma.conversation.findFirst({
-      where: {
-        id: conversationId,
-        clientId,
-        externalChatId: {
-          endsWith: "@s.whatsapp.net",
-        },
-      },
-    });
-
-    if (!conversation) {
-      throw new NotFoundException("Conversation not found");
-    }
-
-    return conversation;
-  }
-
-  private formatConversation(conversation: any) {
-    const latestMessage = conversation.messages?.[0] || null;
-    const lead = conversation.lead;
-
-    return {
-      id: conversation.id,
-      clientId: conversation.clientId,
-      leadId: conversation.leadId,
-      channel: conversation.channel,
-      externalChatId: conversation.externalChatId,
-      leadPhone: conversation.leadPhone,
-      status: conversation.status,
-      unreadCount: conversation.unreadCount || 0,
-      readAt: conversation.readAt,
-      archivedAt: conversation.archivedAt,
-      pinnedAt: conversation.pinnedAt,
-      assignedUserId: conversation.assignedUserId,
-      lastMessageAt: conversation.lastMessageAt,
-      createdAt: conversation.createdAt,
-      updatedAt: conversation.updatedAt,
-
-      contact: lead
-        ? {
-            id: lead.id,
-            name: lead.name,
-            phone: lead.phone,
-            email: lead.email,
-            source: lead.source,
-            currentStage: lead.currentStage || "new_lead",
-            status: lead.status,
-            attributions: lead.attributions || [],
-            tags:
-              lead.tagAssignments?.map((assignment: any) => assignment.tag) ||
-              [],
-          }
-        : null,
-
-      whatsappInstance: conversation.whatsappInstance
-        ? {
-            id: conversation.whatsappInstance.id,
-            name: conversation.whatsappInstance.name,
-            phoneNumber: conversation.whatsappInstance.phoneNumber,
-            status: conversation.whatsappInstance.status,
-          }
-        : null,
-
-      latestMessage: latestMessage
-        ? {
-            id: latestMessage.id,
-            externalMessageId: latestMessage.externalMessageId,
-            direction: latestMessage.direction,
-            messageType: latestMessage.messageType,
-            body: latestMessage.body,
-            mediaUrl: latestMessage.mediaUrl,
-            mediaMimeType: latestMessage.mediaMimeType,
-            mediaFileName: latestMessage.mediaFileName,
-            fromPhone: latestMessage.fromPhone,
-            toPhone: latestMessage.toPhone,
-            sentAt: latestMessage.sentAt,
-            createdAt: latestMessage.createdAt,
-          }
-        : null,
-    };
   }
 }

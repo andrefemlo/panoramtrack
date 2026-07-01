@@ -862,5 +862,57 @@ createApp({
 
       return false;
     },
+
+    contactDisplayName(item) {
+      const lead = item?.lead || item || {};
+      const name = lead.name || item?.leadName || item?.name || "";
+
+      if (name && name.trim()) {
+        return name.trim();
+      }
+
+      const phone = lead.phone || item?.leadPhone || item?.phone || "";
+
+      if (phone) {
+        return this.formatPhone(phone);
+      }
+
+      return "Contato sem nome";
+    },
+
+    contactAvatarUrl(item) {
+      const lead = item?.lead || item || {};
+
+      return (
+        lead.profilePictureUrl ||
+        item?.profilePictureUrl ||
+        item?.leadProfilePictureUrl ||
+        ""
+      );
+    },
+
+    contactInitials(item) {
+      const displayName = this.contactDisplayName(item);
+
+      if (!displayName || displayName === "Contato sem nome") {
+        return "?";
+      }
+
+      const parts = displayName
+        .replace(/[^\p{L}\p{N}\s]/gu, "")
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+      if (!parts.length) {
+        return "?";
+      }
+
+      if (parts.length === 1) {
+        return parts[0].slice(0, 2).toUpperCase();
+      }
+
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    },
   },
 }).mount("#app");

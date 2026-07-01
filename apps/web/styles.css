@@ -1195,3 +1195,13 @@ select:focus {
 .media-unavailable small {
   font-size: 12px;
 }
+
+.conversation-avatar-img,
+.contact-avatar-img,
+.lead-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
+}

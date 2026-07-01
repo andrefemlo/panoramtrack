@@ -139,10 +139,15 @@
               <template v-if="selectedConversation">
                 <header class="chat-header">
                   <div class="avatar">
-                    {{ initials(selectedConversation.contact?.name || selectedConversation.leadPhone) }}
+                    <img v-if="contactAvatarUrl(conversation)" class="conversation-avatar-img"
+                      :src="contactAvatarUrl(conversation)" :alt="contactDisplayName(conversation)" />
+
+                    <span v-else>
+                      {{ contactInitials(conversation) }}
+                    </span>
                   </div>
                   <div class="chat-contact">
-                    <strong>{{ selectedConversation.contact?.name || selectedConversation.leadPhone }}</strong>
+                    <strong>{{ contactDisplayName(conversation) }}</strong>
                     <span>{{ selectedConversation.leadPhone }}</span>
                   </div>
                   <button class="secondary-button" type="button" @click="openLead(selectedConversation.leadId)">
