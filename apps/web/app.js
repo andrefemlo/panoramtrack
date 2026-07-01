@@ -864,14 +864,32 @@ createApp({
     },
 
     contactDisplayName(item) {
-      const lead = item?.lead || item || {};
-      const name = lead.name || item?.leadName || item?.name || "";
+      const contact = item?.contact || {};
+      const lead = item?.lead || {};
+
+      const name =
+        contact.name ||
+        lead.name ||
+        item?.leadName ||
+        item?.name ||
+        contact.whatsappName ||
+        lead.whatsappName ||
+        item?.whatsappName ||
+        contact.whatsappPushName ||
+        lead.whatsappPushName ||
+        item?.whatsappPushName ||
+        "";
 
       if (name && name.trim()) {
         return name.trim();
       }
 
-      const phone = lead.phone || item?.leadPhone || item?.phone || "";
+      const phone =
+        contact.phone ||
+        lead.phone ||
+        item?.leadPhone ||
+        item?.phone ||
+        "";
 
       if (phone) {
         return this.formatPhone(phone);
@@ -881,9 +899,11 @@ createApp({
     },
 
     contactAvatarUrl(item) {
-      const lead = item?.lead || item || {};
+      const contact = item?.contact || {};
+      const lead = item?.lead || {};
 
       return (
+        contact.profilePictureUrl ||
         lead.profilePictureUrl ||
         item?.profilePictureUrl ||
         item?.leadProfilePictureUrl ||

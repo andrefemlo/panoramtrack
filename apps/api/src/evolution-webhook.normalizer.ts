@@ -298,6 +298,12 @@ function extractMessageType(
   if (messageNode?.documentMessage) return "document";
   if (messageNode?.stickerMessage) return "sticker";
 
+  if (payload?.data?.message?.imageMessage) return "image";
+  if (payload?.data?.message?.audioMessage) return "audio";
+  if (payload?.data?.message?.videoMessage) return "video";
+  if (payload?.data?.message?.documentMessage) return "document";
+  if (payload?.data?.message?.stickerMessage) return "sticker";
+
   if (
     messageNode?.conversation ||
     messageNode?.extendedTextMessage?.text ||
@@ -337,12 +343,18 @@ function extractMessageText(payload: any, messageNode: any): string | null {
         messageNode?.imageMessage?.caption ||
         messageNode?.videoMessage?.caption ||
         messageNode?.documentMessage?.caption ||
+        payload?.data?.message?.imageMessage?.caption ||
+        payload?.data?.message?.videoMessage?.caption ||
+        payload?.data?.message?.documentMessage?.caption ||
+        payload?.data?.message?.message?.imageMessage?.caption ||
+        payload?.data?.message?.message?.videoMessage?.caption ||
+        payload?.data?.message?.message?.documentMessage?.caption ||
+        payload?.data?.caption ||
+        payload?.caption ||
         payload?.data?.text ||
         payload?.data?.body ||
-        payload?.data?.caption ||
         payload?.text ||
-        payload?.body ||
-        payload?.caption,
+        payload?.body,
     ) || null
   );
 }

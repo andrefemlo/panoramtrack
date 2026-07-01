@@ -139,17 +139,19 @@
               <template v-if="selectedConversation">
                 <header class="chat-header">
                   <div class="avatar">
-                    <img v-if="contactAvatarUrl(conversation)" class="conversation-avatar-img"
-                      :src="contactAvatarUrl(conversation)" :alt="contactDisplayName(conversation)" />
+                    <img v-if="contactAvatarUrl(selectedConversation)" class="conversation-avatar-img"
+                      :src="contactAvatarUrl(selectedConversation)" :alt="contactDisplayName(selectedConversation)" />
 
                     <span v-else>
-                      {{ contactInitials(conversation) }}
+                      {{ contactInitials(selectedConversation) }}
                     </span>
                   </div>
+
                   <div class="chat-contact">
-                    <strong>{{ contactDisplayName(conversation) }}</strong>
-                    <span>{{ selectedConversation.leadPhone }}</span>
+                    <strong>{{ contactDisplayName(selectedConversation) }}</strong>
+                    <span>{{ formatPhone(selectedConversation.leadPhone) }}</span>
                   </div>
+
                   <button class="secondary-button" type="button" @click="openLead(selectedConversation.leadId)">
                     Ver lead
                   </button>
