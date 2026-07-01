@@ -1057,6 +1057,11 @@ createApp({
         console.warn("Realtime events connection error", error);
       };
 
+      source.addEventListener("contact.updated", async (event) => {
+        const data = JSON.parse(event.data || "{}");
+        await this.handleRealtimeConversationEvent(data);
+      });
+
       this.eventsSource = source;
     },
 
@@ -1068,17 +1073,22 @@ createApp({
     },
 
     async handleRealtimeConversationEvent(event) {
-      if (!event?.conversationId) {
+      if (!event?.conversationId && !event?.leadId) {
         return;
       }
 
       if (this.view === "conversations") {
         await this.loadConversations({ silent: true });
 
-        if (this.selectedConversationId === event.conversationId) {
+        if (event.conversationId && this.selectedConversationId === event.conversationId) {
           await this.refreshConversationMessages(event.conversationId);
         }
 
+        return;
+      }
+
+      if (this.view === "contacts") {
+        await this.loadContacts();
         return;
       }
 
