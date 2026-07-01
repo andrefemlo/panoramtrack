@@ -178,7 +178,7 @@
                         <small>Esta mídia não está mais disponível para download.</small>
                       </div>
 
-                      <img v-if="isMediaMessage(message, 'image') && !isUnavailableMedia(message)" class="chat-image"
+                      <img v-if="isImageMessage(message) && !isUnavailableMedia(message)" class="chat-image"
                         :src="message.mediaUrl" alt="Imagem da conversa" />
 
                       <audio v-if="isAudioMessage(message) && !isUnavailableMedia(message)" class="chat-audio" controls
