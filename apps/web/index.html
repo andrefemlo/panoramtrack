@@ -81,8 +81,8 @@
                     :class="{ active: selectedLeadId === lead.id }" type="button" @click="openLead(lead.id)">
                     <div class="lead-card-top">
                       <div>
-                        <strong>{{ displayName(lead) }}</strong>
-                        <span>{{ lead.phone || 'Sem telefone' }}</span>
+                        <strong>{{ displayName(selectedLead) }}</strong>
+                        <span>{{ formatPhone(lead.phone) || 'Sem telefone' }}</span>
                       </div>
                       <span class="badge badge-neutral">{{ lead.source || 'lead' }}</span>
                     </div>
@@ -257,16 +257,13 @@
               <button v-for="contact in contacts" :key="contact.id" class="contact-card"
                 :class="{ active: selectedLeadId === contact.id }" type="button" @click="openLead(contact.id)">
                 <div class="avatar">
-                  <div class="avatar">
-                    <img v-if="contactAvatarUrl(contact)" class="contact-avatar-img" :src="contactAvatarUrl(contact)"
-                      :alt="contactDisplayName(contact)" />
+                  <img v-if="contactAvatarUrl(contact)" class="contact-avatar-img" :src="contactAvatarUrl(contact)"
+                    :alt="contactDisplayName(contact)" />
 
-                    <span v-else>
-                      {{ contactInitials(contact) }}
-                    </span>
-                  </div>
+                  <span v-else>
+                    {{ contactInitials(contact) }}
+                  </span>
                 </div>
-
                 <div class="contact-main">
                   <strong>{{ contactDisplayName(contact) }}</strong>
                   <span>{{ formatPhone(contact.phone) || 'Sem telefone' }}</span>
@@ -298,8 +295,8 @@
           <header class="drawer-header">
             <div>
               <p>Lead</p>
-              <h2>{{ displayName(selectedLead) }}</h2>
-              <span>{{ selectedLead.phone || 'Sem telefone' }}</span>
+              <h2>{{ contactDisplayName(selectedLead) }}</h2>
+              <span>{{ formatPhone(selectedLead.phone) || 'Sem telefone' }}</span>
             </div>
             <button class="icon-button" type="button" aria-label="Fechar" @click="closeDrawer">×</button>
           </header>

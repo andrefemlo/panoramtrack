@@ -227,10 +227,6 @@ createApp({
       );
     },
 
-    displayName(record) {
-      return record?.name || record?.phone || "Contato sem nome";
-    },
-
     leadCampaign(lead) {
       const attribution = lead?.latestAttribution;
       return (
@@ -641,15 +637,6 @@ createApp({
       await this.refreshActiveView();
     },
 
-    lastMessages(messages = []) {
-      return [...messages].slice(-8).reverse();
-    },
-
-    messagePreview(message, emptyLabel = "Sem mensagem registrada.") {
-      if (!message) return emptyLabel;
-      return message.body || this.messageTypeLabel(message);
-    },
-
     messageTypeLabel(message) {
       if (!message) return "Sem mensagem";
       if (message.messageType === "image") return "Imagem";
@@ -748,10 +735,6 @@ createApp({
       );
     },
 
-    shouldShowMessageText(message) {
-      return !this.isMediaMessage(message);
-    },
-
     isMediaMessageType(message, mediaType) {
       return message?.messageType === mediaType && !!message?.mediaUrl;
     },
@@ -774,20 +757,6 @@ createApp({
       }
 
       return ["image", "audio", "video", "document"].includes(message.messageType);
-    },
-
-    documentLabel(message) {
-      return message?.mediaFileName || message?.body || "Abrir documento";
-    },
-
-    initials(value) {
-      return String(value || "P")
-        .trim()
-        .split(/\s+/)
-        .slice(0, 2)
-        .map((part) => part[0])
-        .join("")
-        .toUpperCase();
     },
 
     formatDate(value) {
@@ -818,47 +787,6 @@ createApp({
       } catch {
         return message;
       }
-    },
-    normalizedAudioSrc(message) {
-      const mediaUrl = message?.mediaUrl || "";
-
-      if (!mediaUrl) {
-        return "";
-      }
-
-      return mediaUrl
-        .replace("data:audio/ogg; codecs=opus;base64,", "data:audio/ogg;base64,")
-        .replace("data:audio/ogg;codecs=opus;base64,", "data:audio/ogg;base64,");
-    },
-
-    normalizedAudioMimeType(message) {
-      const mimeType = message?.mediaMimeType || "";
-
-      if (mimeType.includes("ogg")) {
-        return "audio/ogg";
-      }
-
-      if (mimeType.includes("opus")) {
-        return "audio/ogg";
-      }
-
-      if (mimeType.includes("mpeg")) {
-        return "audio/mpeg";
-      }
-
-      if (mimeType.includes("mp3")) {
-        return "audio/mpeg";
-      }
-
-      if (mimeType.includes("mp4")) {
-        return "audio/mp4";
-      }
-
-      if (mimeType.includes("aac")) {
-        return "audio/aac";
-      }
-
-      return mimeType || "audio/ogg";
     },
 
     isUnavailableMedia(message) {

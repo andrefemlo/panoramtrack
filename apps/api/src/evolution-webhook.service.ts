@@ -203,7 +203,7 @@ export class EvolutionWebhookService {
       },
     });
 
-    if (!lead.profilePictureUrl) {
+    if (!lead.profilePictureUrl || !lead.whatsappName) {
       void this.hydrateLeadProfileFromEvolution({
         instanceName,
         leadId: lead.id,
@@ -492,6 +492,7 @@ export class EvolutionWebhookService {
     instanceName: string;
     leadId: string;
     phone: string;
+    conversationId?: string | null;
   }) {
     const profilePictureUrl = await this.fetchProfilePictureUrlFromEvolution({
       instanceName: params.instanceName,
@@ -554,10 +555,74 @@ export class EvolutionWebhookService {
 
     this.realtimeEvents.emit({
       type: "contact.updated",
-      conversationId: conversation?.id || null,
+      conversationId: params.conversationId || conversation?.id || null,
       leadId: params.leadId,
       sentAt: new Date().toISOString(),
     });
+  }
+
+  private async fetchProfilePictureUrlFromEvolution(params: {
+    instanceName: string;
+    phone: string;
+  }): Promise<string | null> {
+    const baseUrl = process.env.EVOLUTION_API_URL;
+    const apiKey = process.env.EVOLUTION_API_KEY;
+
+    if (!baseUrl || !apiKey) {
+      return null;
+    }
+
+    const encodedInstance = encodeURIComponent(params.instanceName);
+    const remoteJid = `${params.phone}@s.whatsapp.net`;
+
+    const attempts = [
+      {
+        path: `/chat/fetchProfilePictureUrl/${encodedInstance}`,
+        body: {
+          number: params.phone,
+        },
+      },
+      {
+        path: `/chat/fetchProfilePictureUrl/${encodedInstance}`,
+        body: {
+          remoteJid,
+        },
+      },
+      {
+        path: `/chat/fetchProfilePictureUrl/${encodedInstance}`,
+        body: {
+          contact: remoteJid,
+        },
+      },
+    ];
+
+    for (const attempt of attempts) {
+      try {
+        const response = await fetch(`${baseUrl}${attempt.path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: apiKey,
+          },
+          body: JSON.stringify(attempt.body),
+        });
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const result = await response.json();
+        const profilePictureUrl = this.extractProfilePictureUrl(result);
+
+        if (profilePictureUrl) {
+          return profilePictureUrl;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
   }
 
   private async fetchWhatsappNameFromEvolution(params: {
@@ -1030,220 +1095,6 @@ export class EvolutionWebhookService {
 
   private isIndividualPhoneJid(remoteJid: string | null): boolean {
     return !!remoteJid && remoteJid.toLowerCase().endsWith("@s.whatsapp.net");
-  }
-
-  private extractInstanceName(payload: any): string {
-    return (
-      payload?.instance ||
-      payload?.instanceName ||
-      payload?.data?.instance ||
-      "default"
-    );
-  }
-
-  private extractInstancePhone(payload: any): string | null {
-    const value =
-      payload?.instancePhone ||
-      payload?.data?.instancePhone ||
-      payload?.owner ||
-      payload?.data?.owner ||
-      payload?.sender ||
-      payload?.data?.sender ||
-      null;
-
-    if (!value || typeof value !== "string") {
-      return null;
-    }
-
-    const normalized = value.split("@")[0].replace(/\D/g, "");
-
-    return normalized || null;
-  }
-
-  private extractChatId(payload: any): string | null {
-    return (
-      payload?.data?.key?.remoteJid ||
-      payload?.key?.remoteJid ||
-      payload?.remoteJid ||
-      null
-    );
-  }
-
-  private extractLeadPhone(payload: any): string | null {
-    const chatId = this.extractChatId(payload);
-
-    if (!chatId) {
-      return null;
-    }
-
-    const raw = chatId.split("@")[0];
-
-    return raw.replace(/\D/g, "") || null;
-  }
-
-  private extractMessageId(payload: any): string {
-    return (
-      payload?.data?.key?.id ||
-      payload?.key?.id ||
-      payload?.messageId ||
-      `generated_${Date.now()}_${Math.random().toString(16).slice(2)}`
-    );
-  }
-
-  private extractFromMe(payload: any): boolean {
-    return Boolean(
-      payload?.data?.key?.fromMe || payload?.key?.fromMe || payload?.fromMe,
-    );
-  }
-
-  private extractPushName(payload: any): string | null {
-    return (
-      payload?.data?.pushName ||
-      payload?.pushName ||
-      payload?.contact?.name ||
-      null
-    );
-  }
-
-  private extractMessageNode(payload: any): any {
-    const root =
-      payload?.data?.message?.message ||
-      payload?.data?.message ||
-      payload?.message?.message ||
-      payload?.message ||
-      payload?.content ||
-      {};
-
-    return this.unwrapMessageNode(root);
-  }
-
-  private unwrapMessageNode(node: any): any {
-    let current = node || {};
-
-    for (let index = 0; index < 6; index += 1) {
-      const next =
-        current?.ephemeralMessage?.message ||
-        current?.viewOnceMessage?.message ||
-        current?.viewOnceMessageV2?.message ||
-        current?.viewOnceMessageV2Extension?.message ||
-        current?.documentWithCaptionMessage?.message ||
-        current?.editedMessage?.message;
-
-      if (!next || next === current) {
-        return current;
-      }
-
-      current = next;
-    }
-
-    return current;
-  }
-
-  private extractMessageType(messageNode: any, payload: any): string {
-    const explicit = this.optionalString(
-      payload?.data?.messageType || payload?.messageType || payload?.type,
-    )?.toLowerCase();
-
-    if (explicit) {
-      if (explicit.includes("image")) return "image";
-      if (explicit.includes("audio")) return "audio";
-      if (explicit.includes("video")) return "video";
-      if (explicit.includes("document")) return "document";
-      if (explicit.includes("sticker")) return "sticker";
-    }
-
-    if (messageNode?.imageMessage) return "image";
-    if (messageNode?.audioMessage) return "audio";
-    if (messageNode?.videoMessage) return "video";
-    if (messageNode?.documentMessage) return "document";
-    if (messageNode?.stickerMessage) return "sticker";
-
-    return "text";
-  }
-
-  private extractMediaFields(
-    messageNode: any,
-    payload: any,
-    messageType: string,
-  ) {
-    const mediaNode = this.mediaNodeForType(messageNode, messageType);
-
-    return {
-      mediaUrl:
-        this.optionalString(
-          mediaNode?.url ||
-            payload?.data?.mediaUrl ||
-            payload?.mediaUrl ||
-            payload?.data?.url ||
-            payload?.url,
-        ) || null,
-      mediaMimeType:
-        this.optionalString(
-          mediaNode?.mimetype ||
-            payload?.data?.mimetype ||
-            payload?.data?.mimeType ||
-            payload?.mimetype ||
-            payload?.mimeType,
-        ) || null,
-      mediaFileName:
-        this.optionalString(
-          mediaNode?.fileName ||
-            mediaNode?.filename ||
-            payload?.data?.fileName ||
-            payload?.data?.filename ||
-            payload?.fileName ||
-            payload?.filename,
-        ) || null,
-    };
-  }
-
-  private mediaNodeForType(messageNode: any, messageType: string): any {
-    if (messageType === "image") return messageNode?.imageMessage;
-    if (messageType === "audio") return messageNode?.audioMessage;
-    if (messageType === "video") return messageNode?.videoMessage;
-    if (messageType === "document") return messageNode?.documentMessage;
-    if (messageType === "sticker") return messageNode?.stickerMessage;
-
-    return null;
-  }
-
-  private extractMessageText(
-    payload: any,
-    messageNode = this.extractMessageNode(payload),
-  ): string | null {
-    return (
-      this.optionalString(
-        messageNode?.conversation ||
-          messageNode?.extendedTextMessage?.text ||
-          messageNode?.imageMessage?.caption ||
-          messageNode?.videoMessage?.caption ||
-          messageNode?.documentMessage?.caption ||
-          payload?.data?.text ||
-          payload?.data?.body ||
-          payload?.data?.caption ||
-          payload?.text ||
-          payload?.body ||
-          payload?.caption,
-      ) || null
-    );
-  }
-
-  private extractSentAt(payload: any): Date {
-    const timestamp =
-      payload?.data?.messageTimestamp ||
-      payload?.messageTimestamp ||
-      payload?.timestamp;
-
-    if (typeof timestamp === "number") {
-      return new Date(timestamp > 9999999999 ? timestamp : timestamp * 1000);
-    }
-
-    if (typeof timestamp === "string" && /^\d+$/.test(timestamp)) {
-      const parsed = Number(timestamp);
-      return new Date(parsed > 9999999999 ? parsed : parsed * 1000);
-    }
-
-    return new Date();
   }
 
   private extractClickCode(text: string | null): string | null {

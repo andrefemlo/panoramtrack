@@ -15,7 +15,6 @@ export class WhatsappSyncService {
     rawInstanceName: string,
     body: {
       messagesPerChat?: unknown;
-      overwriteNames?: unknown;
     },
   ) {
     const instanceName = decodeURIComponent(rawInstanceName || "").trim();
@@ -25,8 +24,6 @@ export class WhatsappSyncService {
     }
 
     const messagesPerChat = this.clampNumber(body.messagesPerChat, 30, 0, 100);
-    const overwriteNames = body.overwriteNames !== false;
-
     const client = await this.getDemoClient();
     const instanceStatus = await this.getEvolutionInstanceStatus(instanceName);
 
@@ -110,30 +107,28 @@ export class WhatsappSyncService {
         },
       });
 
-      const shouldUpdateName =
-        !!existingLead &&
-        this.shouldUpdateLeadName({
-          existingName: existingLead.name,
-          newName: chat.contactName,
-          phone: leadPhone,
-          overwriteNames,
-        });
+      const leadData: {
+        whatsappName?: string | null;
+      } = {};
+
+      if (chat.contactName && chat.contactName !== existingLead?.whatsappName) {
+        leadData.whatsappName = chat.contactName;
+      }
 
       const lead = existingLead
-        ? await this.prisma.lead.update({
-            where: {
-              id: existingLead.id,
-            },
-            data: shouldUpdateName
-              ? {
-                  name: chat.contactName,
-                }
-              : {},
-          })
+        ? Object.keys(leadData).length
+          ? await this.prisma.lead.update({
+              where: {
+                id: existingLead.id,
+              },
+              data: leadData,
+            })
+          : existingLead
         : await this.prisma.lead.create({
             data: {
               clientId: client.id,
-              name: chat.contactName,
+              name: null,
+              whatsappName: chat.contactName,
               phone: leadPhone,
               source: "whatsapp",
               firstMessage: null,
@@ -143,11 +138,10 @@ export class WhatsappSyncService {
           });
 
       if (existingLead) {
-        summary.leadsUpdated += shouldUpdateName ? 1 : 0;
+        summary.leadsUpdated += Object.keys(leadData).length ? 1 : 0;
       } else {
         summary.leadsCreated += 1;
       }
-
       const existingConversation = await this.prisma.conversation.findUnique({
         where: {
           clientId_externalChatId: {
@@ -272,25 +266,12 @@ export class WhatsappSyncService {
       summary.existingLeadsFound += 1;
 
       const data: {
-        name?: string;
         whatsappName?: string;
         profilePictureUrl?: string;
       } = {};
 
-      if (contact.name) {
+      if (contact.name && contact.name !== existingLead.whatsappName) {
         data.whatsappName = contact.name;
-      }
-
-      if (
-        contact.name &&
-        this.shouldUpdateLeadName({
-          existingName: existingLead.name,
-          newName: contact.name,
-          phone: contact.phone,
-          overwriteNames: false,
-        })
-      ) {
-        data.name = contact.name;
       }
 
       if (
@@ -312,7 +293,7 @@ export class WhatsappSyncService {
         data,
       });
 
-      if (data.name) {
+      if (data.whatsappName) {
         summary.leadsUpdatedName += 1;
       }
 
@@ -324,7 +305,7 @@ export class WhatsappSyncService {
         summary.sample.push({
           phone: contact.phone,
           oldName: existingLead.name,
-          newName: data.name || contact.name,
+          newName: data.whatsappName || contact.name,
           hasPhoto: !!data.profilePictureUrl,
         });
       }
@@ -1063,34 +1044,6 @@ export class WhatsappSyncService {
     }
 
     return phone;
-  }
-
-  private shouldUpdateLeadName(params: {
-    existingName: string | null;
-    newName: string | null;
-    phone: string;
-    overwriteNames: boolean;
-  }) {
-    if (!params.newName) {
-      return false;
-    }
-
-    if (!params.existingName) {
-      return true;
-    }
-
-    const existingDigits = params.existingName.replace(/\D/g, "");
-    const phoneDigits = params.phone.replace(/\D/g, "");
-
-    if (existingDigits && existingDigits === phoneDigits) {
-      return true;
-    }
-
-    if (!params.overwriteNames) {
-      return false;
-    }
-
-    return params.existingName !== params.newName;
   }
 
   private cleanContactName(
