@@ -533,6 +533,7 @@ select:focus {
 
 .conversation-view {
   height: 100%;
+  min-height: 0;
   min-width: 0;
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
@@ -541,11 +542,18 @@ select:focus {
 
 .conversation-list {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   border-right: 1px solid var(--line);
   background: var(--panel);
+}
+
+.conversation-list-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .list-header {
@@ -584,6 +592,7 @@ select:focus {
   height: 38px;
   flex: 0 0 auto;
   place-items: center;
+  overflow: hidden;
   border-radius: 8px;
   background: #17212f;
   color: #ffffff;

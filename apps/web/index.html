@@ -116,23 +116,34 @@
                 <span>{{ conversations.length }} encontradas</span>
               </header>
 
-              <button v-for="conversation in conversations" :key="conversation.id" class="conversation-item"
-                :class="{ active: selectedConversationId === conversation.id }" type="button"
-                @click="openConversation(conversation.id)">
-                <div class="avatar">{{ initials(conversation.contact?.name || conversation.leadPhone) }}</div>
-                <div class="conversation-summary">
-                  <div class="summary-top">
-                    <strong>{{ conversation.contact?.name || conversation.leadPhone }}</strong>
-                    <span>{{ formatDate(conversation.lastMessageAt) }}</span>
-                  </div>
-                  <small>{{ conversation.leadPhone }}</small>
-                  <p>{{ conversation.latestMessage?.body || messageTypeLabel(conversation.latestMessage) }}</p>
-                </div>
-              </button>
+              <div class="conversation-list-scroll">
+                <button v-for="conversation in conversations" :key="conversation.id" class="conversation-item"
+                  :class="{ active: selectedConversationId === conversation.id }" type="button"
+                  @click="openConversation(conversation.id)">
+                  <div class="avatar">
+                    <img v-if="contactAvatarUrl(conversation)" class="conversation-avatar-img"
+                      :src="contactAvatarUrl(conversation)" :alt="contactDisplayName(conversation)" />
 
-              <p v-if="!conversations.length && !loading" class="empty-state">
-                Nenhuma conversa encontrada.
-              </p>
+                    <span v-else>
+                      {{ contactInitials(conversation) }}
+                    </span>
+                  </div>
+
+                  <div class="conversation-summary">
+                    <div class="summary-top">
+                      <strong>{{ contactDisplayName(conversation) }}</strong>
+                      <span>{{ formatDate(conversation.lastMessageAt) }}</span>
+                    </div>
+
+                    <small>{{ formatPhone(conversation.leadPhone) }}</small>
+                    <p>{{ conversation.latestMessage?.body || messageTypeLabel(conversation.latestMessage) }}</p>
+                  </div>
+                </button>
+
+                <p v-if="!conversations.length && !loading" class="empty-state">
+                  Nenhuma conversa encontrada.
+                </p>
+              </div>
             </aside>
 
             <section class="chat-pane">
@@ -245,12 +256,21 @@
             <div class="contacts-grid">
               <button v-for="contact in contacts" :key="contact.id" class="contact-card"
                 :class="{ active: selectedLeadId === contact.id }" type="button" @click="openLead(contact.id)">
-                <div class="avatar">{{ initials(contact.name || contact.phone) }}</div>
-                <div class="contact-main">
-                  <strong>{{ displayName(contact) }}</strong>
-                  <span>{{ contact.phone || 'Sem telefone' }}</span>
-                  <p>{{ contact.latestMessage?.body || 'Sem última mensagem' }}</p>
+                <div class="avatar">
+                  <img v-if="contactAvatarUrl(contact)" class="contact-avatar-img" :src="contactAvatarUrl(contact)"
+                    :alt="contactDisplayName(contact)" />
+
+                  <span v-else>
+                    {{ contactInitials(contact) }}
+                  </span>
                 </div>
+
+                <div class="contact-main">
+                  <strong>{{ contactDisplayName(contact) }}</strong>
+                  <span>{{ formatPhone(contact.phone) || 'Sem telefone' }}</span>
+                  <p>{{ contact.latestMessage?.body || messageTypeLabel(contact.latestMessage) }}</p>
+                </div>
+
                 <div class="contact-tags">
                   <span class="badge badge-neutral">{{ contact.currentStageLabel || contact.currentStage }}</span>
                   <span v-for="tag in contact.tags || []" :key="tag.id" class="badge badge-blue">

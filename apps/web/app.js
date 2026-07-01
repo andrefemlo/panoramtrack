@@ -46,7 +46,8 @@ createApp({
         { view: "contacts", label: "Contatos", icon: "◎" },
       ],
       search: "",
-      searchTimer: null,
+      pollingTimer: null,
+      isPolling: false,
       selectedConversation: null,
       selectedConversationId: null,
       selectedLead: null,
@@ -88,6 +89,11 @@ createApp({
   mounted() {
     this.checkHealth();
     this.refreshActiveView();
+    this.startPolling();
+  },
+
+  beforeUnmount() {
+    this.stopPolling();
   },
 
   methods: {
@@ -158,16 +164,35 @@ createApp({
       this.contacts = data?.contacts || [];
     },
 
-    async loadConversations() {
+    async loadConversations(options = {}) {
       const params = new URLSearchParams({ take: "100", archived: "false" });
 
       if (this.search) params.set("search", this.search);
 
       const data = await this.api(`/conversations?${params.toString()}`);
-      this.conversations = data?.conversations || [];
 
-      if (!this.selectedConversationId && this.conversations.length) {
+      this.conversations = [...(data?.conversations || [])].sort((a, b) => {
+        const dateA = new Date(a.lastMessageAt || a.updatedAt || a.createdAt || 0).getTime();
+        const dateB = new Date(b.lastMessageAt || b.updatedAt || b.createdAt || 0).getTime();
+
+        return dateB - dateA;
+      });
+
+      if (!this.selectedConversationId && this.conversations.length && !options.silent) {
         await this.openConversation(this.conversations[0].id);
+      }
+
+      if (this.selectedConversationId) {
+        const updatedSelected = this.conversations.find(
+          (conversation) => conversation.id === this.selectedConversationId,
+        );
+
+        if (updatedSelected) {
+          this.selectedConversation = {
+            ...(this.selectedConversation || {}),
+            ...updatedSelected,
+          };
+        }
       }
     },
 
@@ -960,6 +985,84 @@ createApp({
       }
 
       return digits;
+    },
+
+    startPolling() {
+      this.stopPolling();
+
+      this.pollingTimer = window.setInterval(() => {
+        this.pollActiveView();
+      }, 5000);
+    },
+
+    stopPolling() {
+      if (this.pollingTimer) {
+        window.clearInterval(this.pollingTimer);
+        this.pollingTimer = null;
+      }
+    },
+
+    async pollActiveView() {
+      if (this.isPolling || this.loading) {
+        return;
+      }
+
+      if (document.hidden) {
+        return;
+      }
+
+      this.isPolling = true;
+
+      try {
+        if (this.view === "conversations") {
+          const currentConversationId = this.selectedConversationId;
+
+          await this.loadConversations({ silent: true });
+
+          if (currentConversationId) {
+            await this.refreshConversationMessages(currentConversationId);
+          }
+
+          return;
+        }
+
+        if (this.view === "contacts") {
+          await this.loadContacts();
+          return;
+        }
+
+        await this.loadPipeline();
+      } catch (error) {
+        console.error(error);
+      } finally {
+        this.isPolling = false;
+      }
+    },
+    async refreshConversationMessages(conversationId) {
+      if (!conversationId) {
+        return;
+      }
+
+      const detail = await this.api(
+        `/conversations/${encodeURIComponent(conversationId)}/messages?take=80`,
+      );
+
+      const oldLastId = this.conversationMessages.at(-1)?.id || null;
+      const newMessages = detail.messages || [];
+      const newLastId = newMessages.at(-1)?.id || null;
+
+      this.selectedConversation = detail.conversation;
+      this.conversationMessages = newMessages;
+
+      if (oldLastId !== newLastId) {
+        await nextTick();
+
+        const container = this.$refs.chatMessages;
+
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+      }
     },
   },
 }).mount("#app");
