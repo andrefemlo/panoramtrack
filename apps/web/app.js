@@ -1041,7 +1041,7 @@ createApp({
     connectRealtimeEvents() {
       this.disconnectRealtimeEvents();
 
-      const source = new EventSource(`${API_BASE}/conversations/events`);
+      const source = new EventSource(`${API_BASE}/realtime/conversations`);
 
       source.addEventListener("message.created", async (event) => {
         const data = JSON.parse(event.data || "{}");
