@@ -61,6 +61,7 @@ createApp({
         { view: "contacts", label: "Contatos", icon: "◎" },
       ],
       search: "",
+      searchTimer: null,
       eventsSource: null,
       selectedConversation: null,
       selectedConversationId: null,

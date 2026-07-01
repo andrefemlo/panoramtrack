@@ -1227,32 +1227,6 @@ export class EvolutionWebhookService {
     return `${"*".repeat(phone.length - 4)}${phone.slice(-4)}`;
   }
 
-  private isIndividualContactChat(chatId: string | null): boolean {
-    if (!chatId) {
-      return false;
-    }
-
-    const normalized = chatId.toLowerCase();
-
-    if (normalized === "status@broadcast") {
-      return false;
-    }
-
-    if (normalized.endsWith("@g.us")) {
-      return false;
-    }
-
-    if (normalized.endsWith("@newsletter")) {
-      return false;
-    }
-
-    if (normalized.endsWith("@broadcast")) {
-      return false;
-    }
-
-    return normalized.endsWith("@s.whatsapp.net");
-  }
-
   private getContactNameFromWebhook(params: {
     pushName: string | null;
     fromMe: boolean;

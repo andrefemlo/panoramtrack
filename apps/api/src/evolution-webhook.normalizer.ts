@@ -115,14 +115,6 @@ export function isMessageEvent(event: string): boolean {
   ].includes(event);
 }
 
-export function isContactEvent(event: string): boolean {
-  return ["CONTACTS_SET", "CONTACTS_UPSERT", "CONTACTS_UPDATE"].includes(event);
-}
-
-export function isChatEvent(event: string): boolean {
-  return ["CHATS_SET", "CHATS_UPSERT", "CHATS_UPDATE"].includes(event);
-}
-
 export function isIndividualContactChat(chatId: string | null): boolean {
   if (!chatId) {
     return false;

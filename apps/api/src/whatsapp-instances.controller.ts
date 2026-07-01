@@ -49,17 +49,6 @@ export class WhatsappInstancesController {
     return this.whatsappSyncService.syncContacts(instanceName);
   }
 
-  @Post(":instanceName/debug-media")
-  async debugMedia(
-    @Param("instanceName") instanceName: string,
-    @Body() body: unknown,
-  ) {
-    return this.whatsappSyncService.debugMediaDownload(
-      instanceName,
-      body && typeof body === "object" ? body : {},
-    );
-  }
-
   @Post(":instanceName/status")
   async refreshStatus(@Param("instanceName") instanceName: string) {
     return this.whatsappInstancesService.refreshInstanceStatus(instanceName);
