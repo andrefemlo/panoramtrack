@@ -1098,11 +1098,129 @@ select:focus {
   line-height: 1;
 }
 
+.mic-button {
+  position: relative;
+  display: inline-grid;
+  width: 42px;
+  min-width: 42px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--brand);
+  border-radius: 7px;
+  background: var(--brand);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.mic-button:hover {
+  background: var(--brand-dark);
+}
+
+.mic-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mic-button.recording {
+  border-color: #dc2626;
+  background: #dc2626;
+}
+
+.mic-glyph {
+  position: relative;
+  display: block;
+  width: 12px;
+  height: 18px;
+  border: 2px solid currentColor;
+  border-radius: 8px;
+}
+
+.mic-glyph::before {
+  position: absolute;
+  right: -6px;
+  bottom: -7px;
+  left: -6px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  content: "";
+}
+
+.mic-glyph::after {
+  position: absolute;
+  bottom: -11px;
+  left: 50%;
+  width: 2px;
+  height: 6px;
+  background: currentColor;
+  content: "";
+  transform: translateX(-50%);
+}
+
 .composer-main {
   min-width: 0;
   flex: 1;
   display: grid;
   gap: 6px;
+}
+
+.recording-strip {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fff1f2;
+  color: #991b1b;
+  padding: 0 10px;
+}
+
+.recording-strip strong {
+  color: #7f1d1d;
+  font-size: 13px;
+}
+
+.recording-strip span:last-child {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.recording-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #dc2626;
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45);
+  animation: recording-pulse 1.2s infinite;
+}
+
+.recorder-cancel-button {
+  width: 38px;
+  min-width: 38px;
+  padding: 0;
+  font-size: 20px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@keyframes recording-pulse {
+  70% {
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
 }
 
 .selected-media-preview {

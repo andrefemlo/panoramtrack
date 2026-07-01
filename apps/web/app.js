@@ -26,6 +26,13 @@ createApp({
       selectedMediaFile: null,
       selectedMediaLabel: "",
       sendingMessage: false,
+      audioRecorder: null,
+      audioRecordingChunks: [],
+      audioRecordingStartedAt: null,
+      audioRecordingTimer: null,
+      audioRecordingSeconds: 0,
+      audioRecordingStream: null,
+      isRecordingAudio: false,
       contacts: [],
       conversationMessages: [],
       conversations: [],
@@ -100,6 +107,7 @@ createApp({
   },
 
   beforeUnmount() {
+    this.cancelAudioRecording();
     this.disconnectRealtimeEvents();
   },
 
@@ -458,6 +466,203 @@ createApp({
       }
     },
 
+    async toggleAudioRecording() {
+      if (this.isRecordingAudio) {
+        await this.finishAudioRecording();
+        return;
+      }
+
+      await this.startAudioRecording();
+    },
+
+    async startAudioRecording() {
+      if (
+        this.sendingMessage ||
+        !this.selectedConversationId ||
+        this.isRecordingAudio
+      ) {
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        this.error = "Seu navegador não permite gravação de áudio neste painel.";
+        return;
+      }
+
+      if (
+        !window.isSecureContext &&
+        !["localhost", "127.0.0.1"].includes(window.location.hostname)
+      ) {
+        this.error =
+          "A gravação de áudio no navegador exige HTTPS. Configure um domínio com SSL para usar o microfone no CRM.";
+        return;
+      }
+
+      try {
+        this.clearSelectedMedia();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = this.preferredAudioRecordingMimeType();
+        const options = mimeType ? { mimeType } : undefined;
+        const recorder = new MediaRecorder(stream, options);
+
+        this.audioRecordingChunks = [];
+        this.audioRecordingStream = stream;
+        this.audioRecorder = recorder;
+        this.audioRecordingStartedAt = Date.now();
+        this.audioRecordingSeconds = 0;
+        this.isRecordingAudio = true;
+        this.error = "";
+
+        recorder.addEventListener("dataavailable", (event) => {
+          if (event.data?.size) {
+            this.audioRecordingChunks.push(event.data);
+          }
+        });
+
+        recorder.addEventListener("stop", () => {
+          this.stopAudioRecordingTimer();
+          this.stopAudioRecordingStream();
+        });
+
+        recorder.start();
+        this.audioRecordingTimer = window.setInterval(() => {
+          this.audioRecordingSeconds = Math.floor(
+            (Date.now() - this.audioRecordingStartedAt) / 1000,
+          );
+        }, 250);
+      } catch (error) {
+        this.resetAudioRecordingState();
+        this.error =
+          error?.name === "NotAllowedError"
+            ? "Permita o acesso ao microfone para gravar áudio."
+            : this.extractErrorMessage(error);
+      }
+    },
+
+    async finishAudioRecording() {
+      if (!this.audioRecorder || !this.isRecordingAudio || this.sendingMessage) {
+        return;
+      }
+
+      const recorder = this.audioRecorder;
+
+      const stopped = new Promise((resolve) => {
+        recorder.addEventListener("stop", resolve, { once: true });
+      });
+
+      if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
+
+      await stopped;
+
+      const chunks = [...this.audioRecordingChunks];
+      const mimeType = recorder.mimeType || "audio/webm";
+      const durationSeconds = this.audioRecordingSeconds;
+
+      this.resetAudioRecordingState();
+
+      if (!chunks.length || durationSeconds < 1) {
+        this.error = "Áudio muito curto para enviar.";
+        return;
+      }
+
+      const extension = this.audioExtensionFromMimeType(mimeType);
+      const file = new File(
+        chunks,
+        `audio-${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`,
+        { type: mimeType },
+      );
+
+      await this.sendAudioRecording(file);
+    },
+
+    cancelAudioRecording() {
+      const recorder = this.audioRecorder;
+
+      if (recorder && recorder.state !== "inactive") {
+        recorder.stop();
+      }
+
+      this.resetAudioRecordingState();
+    },
+
+    async sendAudioRecording(file) {
+      if (!file || !this.selectedConversationId || this.sendingMessage) {
+        return;
+      }
+
+      this.sendingMessage = true;
+
+      try {
+        const mediaBase64 = await this.fileToBase64(file);
+
+        await this.api(
+          `/conversations/${encodeURIComponent(this.selectedConversationId)}/messages/media`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              mediaBase64,
+              mimeType: file.type || "audio/webm",
+              fileName: file.name,
+              mediaType: "audio",
+            }),
+          },
+        );
+
+        await this.openConversation(this.selectedConversationId);
+        await this.loadConversations();
+      } catch (error) {
+        this.error = this.extractErrorMessage(error);
+      } finally {
+        this.sendingMessage = false;
+      }
+    },
+
+    preferredAudioRecordingMimeType() {
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/mp4",
+      ];
+
+      return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+    },
+
+    audioExtensionFromMimeType(mimeType) {
+      if (mimeType.includes("ogg")) return "ogg";
+      if (mimeType.includes("mp4")) return "m4a";
+      if (mimeType.includes("mpeg")) return "mp3";
+      return "webm";
+    },
+
+    resetAudioRecordingState() {
+      this.stopAudioRecordingTimer();
+      this.stopAudioRecordingStream();
+      this.audioRecorder = null;
+      this.audioRecordingChunks = [];
+      this.audioRecordingStartedAt = null;
+      this.audioRecordingSeconds = 0;
+      this.isRecordingAudio = false;
+    },
+
+    stopAudioRecordingTimer() {
+      if (this.audioRecordingTimer) {
+        window.clearInterval(this.audioRecordingTimer);
+      }
+
+      this.audioRecordingTimer = null;
+    },
+
+    stopAudioRecordingStream() {
+      if (this.audioRecordingStream) {
+        this.audioRecordingStream.getTracks().forEach((track) => track.stop());
+      }
+
+      this.audioRecordingStream = null;
+    },
+
     openMediaPicker() {
       if (this.$refs.mediaInput) {
         this.$refs.mediaInput.click();
@@ -616,6 +821,16 @@ createApp({
       }
 
       return `${(size / 1024 / 1024).toFixed(1)} MB`;
+    },
+
+    formatRecordingTime(seconds) {
+      const safeSeconds = Math.max(0, Number(seconds) || 0);
+      const minutes = Math.floor(safeSeconds / 60);
+      const remainingSeconds = safeSeconds % 60;
+
+      return `${String(minutes).padStart(2, "0")}:${String(
+        remainingSeconds,
+      ).padStart(2, "0")}`;
     },
 
     async openLeadConversation(lead) {

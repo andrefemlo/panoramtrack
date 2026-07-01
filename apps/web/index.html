@@ -218,11 +218,17 @@
                     @change="handleMediaSelected" />
 
                   <button class="secondary-button attach-button" type="button" title="Anexar mídia"
-                    @click="openMediaPicker">
+                    :disabled="isRecordingAudio || sendingMessage" @click="openMediaPicker">
                     +
                   </button>
 
                   <div class="composer-main">
+                    <div v-if="isRecordingAudio" class="recording-strip">
+                      <span class="recording-dot"></span>
+                      <strong>Gravando áudio</strong>
+                      <span>{{ formatRecordingTime(audioRecordingSeconds) }}</span>
+                    </div>
+
                     <div v-if="selectedMediaFile" class="selected-media-preview">
                       <div>
                         <strong>{{ selectedMediaFile.name }}</strong>
@@ -235,12 +241,26 @@
                       </button>
                     </div>
 
-                    <input v-model="composerText" class="chat-input" type="text"
+                    <input v-model="composerText" class="chat-input" type="text" :disabled="isRecordingAudio"
                       :placeholder="selectedMediaFile ? 'Legenda opcional...' : 'Digite uma mensagem...'"
                       @keydown.enter="sendComposer" />
                   </div>
 
-                  <button class="primary-button" type="button" @click="sendComposer">
+                  <button v-if="isRecordingAudio" class="secondary-button recorder-cancel-button" type="button"
+                    title="Cancelar áudio" @click="cancelAudioRecording">
+                    ×
+                  </button>
+
+                  <button v-if="!composerText.trim() && !selectedMediaFile" class="mic-button"
+                    :class="{ recording: isRecordingAudio }" type="button"
+                    :title="isRecordingAudio ? 'Enviar áudio' : 'Gravar áudio'"
+                    :disabled="sendingMessage || !selectedConversationId" @click="toggleAudioRecording">
+                    <span class="mic-glyph" aria-hidden="true"></span>
+                    <span class="sr-only">{{ isRecordingAudio ? 'Enviar áudio' : 'Gravar áudio' }}</span>
+                  </button>
+
+                  <button v-else class="primary-button" type="button" :disabled="sendingMessage || isRecordingAudio"
+                    @click="sendComposer">
                     Enviar
                   </button>
                 </footer>
