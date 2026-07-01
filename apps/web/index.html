@@ -257,8 +257,8 @@
               <button v-for="contact in contacts" :key="contact.id" class="contact-card"
                 :class="{ active: selectedLeadId === contact.id }" type="button" @click="openLead(contact.id)">
                 <div class="avatar">
-                  <img v-if="contactAvatarUrl(contact)" class="contact-avatar-img" :src="contactAvatarUrl(contact)"
-                    :alt="contactDisplayName(contact)" />
+                  <img v-if="contactAvatarUrl(conversation)" class="conversation-avatar-img"
+                    :src="contactAvatarUrl(conversation)" :alt="contactDisplayName(conversation)" />
 
                   <span v-else>
                     {{ contactInitials(contact) }}
