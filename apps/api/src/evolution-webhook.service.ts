@@ -492,43 +492,118 @@ export class EvolutionWebhookService {
     instanceName: string;
     leadId: string;
     phone: string;
-    conversationId?: string | null;
   }) {
+    const profilePictureUrl = await this.fetchProfilePictureUrlFromEvolution({
+      instanceName: params.instanceName,
+      phone: params.phone,
+    });
+
+    const whatsappName = await this.fetchWhatsappNameFromEvolution({
+      instanceName: params.instanceName,
+      phone: params.phone,
+    });
+
+    const existingLead = await this.prisma.lead.findUnique({
+      where: {
+        id: params.leadId,
+      },
+    });
+
+    if (!existingLead) {
+      return;
+    }
+
+    const data: {
+      profilePictureUrl?: string;
+      whatsappName?: string;
+    } = {};
+
+    if (
+      profilePictureUrl &&
+      profilePictureUrl !== existingLead.profilePictureUrl
+    ) {
+      data.profilePictureUrl = profilePictureUrl;
+    }
+
+    if (whatsappName && whatsappName !== existingLead.whatsappName) {
+      data.whatsappName = whatsappName;
+    }
+
+    if (!Object.keys(data).length) {
+      return;
+    }
+
+    await this.prisma.lead.update({
+      where: {
+        id: params.leadId,
+      },
+      data,
+    });
+
+    const conversation = await this.prisma.conversation.findFirst({
+      where: {
+        leadId: params.leadId,
+        externalChatId: {
+          endsWith: "@s.whatsapp.net",
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    this.realtimeEvents.emit({
+      type: "contact.updated",
+      conversationId: conversation?.id || null,
+      leadId: params.leadId,
+      sentAt: new Date().toISOString(),
+    });
+  }
+
+  private async fetchWhatsappNameFromEvolution(params: {
+    instanceName: string;
+    phone: string;
+  }): Promise<string | null> {
     const baseUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;
 
     if (!baseUrl || !apiKey) {
-      return;
+      return null;
     }
 
-    const encodedInstanceName = encodeURIComponent(params.instanceName);
+    const encodedInstance = encodeURIComponent(params.instanceName);
+    const remoteJid = `${params.phone}@s.whatsapp.net`;
 
     const attempts = [
       {
-        path: `/chat/fetchProfilePictureUrl/${encodedInstanceName}`,
-        body: {
-          number: params.phone,
-        },
-      },
-      {
-        path: `/chat/fetchProfilePictureUrl/${encodedInstanceName}`,
-        body: {
-          remoteJid: `${params.phone}@s.whatsapp.net`,
-        },
-      },
-      {
-        path: `/chat/findContacts/${encodedInstanceName}`,
+        path: `/chat/findContacts/${encodedInstance}`,
         body: {
           where: {
-            remoteJid: `${params.phone}@s.whatsapp.net`,
+            remoteJid,
           },
         },
       },
       {
-        path: `/chat/findContacts/${encodedInstanceName}`,
+        path: `/chat/findContacts/${encodedInstance}`,
         body: {
           where: {
-            id: `${params.phone}@s.whatsapp.net`,
+            id: remoteJid,
+          },
+        },
+      },
+      {
+        path: `/chat/findChats/${encodedInstance}`,
+        body: {
+          where: {
+            remoteJid,
+          },
+        },
+      },
+      {
+        path: `/chat/findChats/${encodedInstance}`,
+        body: {
+          where: {
+            id: remoteJid,
           },
         },
       },
@@ -536,62 +611,51 @@ export class EvolutionWebhookService {
 
     for (const attempt of attempts) {
       try {
-        const response = await fetch(
-          `${baseUrl.replace(/\/$/, "")}${attempt.path}`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: apiKey,
-            },
-            body: JSON.stringify(attempt.body),
+        const response = await fetch(`${baseUrl}${attempt.path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: apiKey,
           },
-        );
+          body: JSON.stringify(attempt.body),
+        });
 
         if (!response.ok) {
           continue;
         }
 
         const result = await response.json();
-        const profilePictureUrl = this.extractProfilePictureUrl(result);
-        const whatsappName = this.extractProfileName(result);
+        const items = this.extractContactEventItems(result);
 
-        const updateData: {
-          profilePictureUrl?: string;
-          whatsappName?: string;
-        } = {};
+        const matched =
+          items.find((item) => {
+            const itemJid =
+              item?.remoteJid ||
+              item?.id ||
+              item?.jid ||
+              item?.key?.remoteJid ||
+              item?.chatId;
 
-        if (profilePictureUrl) {
-          updateData.profilePictureUrl = profilePictureUrl;
+            return itemJid === remoteJid;
+          }) || items[0];
+
+        const name = this.cleanContactName(
+          matched?.name ||
+            matched?.pushName ||
+            matched?.verifiedName ||
+            matched?.notify ||
+            matched?.subject,
+        );
+
+        if (name) {
+          return name;
         }
-
-        if (whatsappName) {
-          updateData.whatsappName = whatsappName;
-        }
-
-        if (!Object.keys(updateData).length) {
-          continue;
-        }
-
-        await this.prisma.lead.update({
-          where: {
-            id: params.leadId,
-          },
-          data: updateData,
-        });
-
-        this.realtimeEvents.emit({
-          type: "contact.updated",
-          conversationId: params.conversationId || null,
-          leadId: params.leadId,
-          sentAt: new Date().toISOString(),
-        });
-
-        return;
       } catch {
         continue;
       }
     }
+
+    return null;
   }
 
   private extractProfilePictureUrl(value: any): string | null {
