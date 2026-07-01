@@ -302,6 +302,44 @@
           </header>
 
           <section class="drawer-section">
+            <div class="section-title">
+              <h3>Contato</h3>
+              <button class="secondary-button small" type="button" @click="toggleContactEdit">
+                {{ contactEditOpen ? 'Cancelar' : 'Editar' }}
+              </button>
+            </div>
+
+            <div v-if="!contactEditOpen" class="contact-profile-summary">
+              <div>
+                <label>Nome CRM</label>
+                <strong>{{ selectedLead.name || 'Sem nome manual' }}</strong>
+              </div>
+
+              <div>
+                <label>Nome WhatsApp</label>
+                <span>{{ selectedLead.whatsappName || selectedLead.whatsappPushName || 'Não informado' }}</span>
+              </div>
+
+              <div>
+                <label>Email</label>
+                <span>{{ selectedLead.email || 'Não informado' }}</span>
+              </div>
+            </div>
+
+            <div v-else class="drawer-form">
+              <label class="field-label">Nome manual no CRM</label>
+              <input v-model="contactEditForm.name" type="text" placeholder="Nome do contato" />
+
+              <label class="field-label">Email</label>
+              <input v-model="contactEditForm.email" type="email" placeholder="email@empresa.com" />
+
+              <button class="primary-button small" type="button" :disabled="savingContact" @click="saveContactProfile">
+                {{ savingContact ? 'Salvando...' : 'Salvar contato' }}
+              </button>
+            </div>
+          </section>
+
+          <section class="drawer-section">
             <label class="field-label">Etapa</label>
             <select v-model="selectedLead.currentStage" @change="moveLead(selectedLead.id, selectedLead.currentStage)">
               <option v-for="stage in stages" :key="stage.slug" :value="stage.slug">
@@ -369,6 +407,29 @@
           </section>
 
           <section class="drawer-section">
+            <div class="section-title">
+              <h3>Anotações</h3>
+            </div>
+
+            <div class="drawer-composer note-composer">
+              <input v-model="contactNoteBody" type="text" placeholder="Adicionar anotação interna..."
+                @keydown.enter="saveContactNote" />
+              <button class="primary-button small" type="button" :disabled="savingNote" @click="saveContactNote">
+                {{ savingNote ? 'Salvando...' : 'Adicionar' }}
+              </button>
+            </div>
+
+            <article v-for="note in selectedLead.notes || []" :key="note.id" class="info-card compact">
+              <strong>{{ note.body }}</strong>
+              <span>{{ note.createdBy || 'CRM' }} · {{ formatDate(note.createdAt) }}</span>
+            </article>
+
+            <p v-if="!selectedLead.notes?.length" class="empty-state">
+              Nenhuma anotação registrada.
+            </p>
+          </section>
+
+          <section class="drawer-section">
             <h3>Histórico</h3>
             <article v-for="item in selectedLead.stageHistory || []" :key="item.id" class="info-card compact">
               <strong>{{ item.fromStage || 'início' }} → {{ item.toStage }}</strong>
@@ -388,7 +449,7 @@
         <header class="modal-header">
           <div>
             <p>Atribuição manual</p>
-            <h2>{{ displayName(selectedLead) }}</h2>
+            <h2>{{ contactDisplayName(selectedLead) }}</h2>
           </div>
           <button class="icon-button" type="button" @click="closeAttributionModal">×</button>
         </header>

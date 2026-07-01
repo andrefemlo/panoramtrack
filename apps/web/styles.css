@@ -1214,3 +1214,28 @@ select:focus {
   object-fit: cover;
   display: block;
 }
+
+.contact-profile-summary,
+.drawer-form {
+  display: grid;
+  gap: 10px;
+}
+
+.contact-profile-summary div {
+  display: grid;
+  gap: 3px;
+}
+
+.contact-profile-summary label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.drawer-form input,
+.note-composer input {
+  width: 100%;
+}
+
+.note-composer {
+  margin-bottom: 12px;
+}

@@ -139,6 +139,11 @@ export class LeadsService {
             sentAt: "asc",
           },
         },
+        notes: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
         stageHistory: {
           orderBy: {
             changedAt: "desc",

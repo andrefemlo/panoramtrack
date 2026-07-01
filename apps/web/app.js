@@ -33,6 +33,14 @@ createApp({
       drawerMessage: "",
       error: "",
       leads: [],
+      contactEditForm: {
+        name: "",
+        email: "",
+      },
+      contactEditOpen: false,
+      contactNoteBody: "",
+      savingContact: false,
+      savingNote: false,
       loading: false,
       manualAttribution: {
         campaignName: "",
@@ -245,6 +253,12 @@ createApp({
 
       const lead = await this.api(`/leads/${encodeURIComponent(leadId)}`);
       this.selectedLead = lead;
+      this.contactEditForm = {
+        name: lead?.name || "",
+        email: lead?.email || "",
+      };
+      this.contactEditOpen = false;
+      this.contactNoteBody = "";
       this.stages = this.normalizeStages(lead?.stages || this.stages);
     },
 
@@ -253,6 +267,12 @@ createApp({
       this.selectedLead = null;
       this.selectedLeadId = null;
       this.drawerMessage = "";
+      this.contactEditOpen = false;
+      this.contactNoteBody = "";
+      this.contactEditForm = {
+        name: "",
+        email: "",
+      };
     },
 
     async moveLead(leadId, stage) {
@@ -272,6 +292,85 @@ createApp({
 
       if (this.selectedLeadId) {
         await this.openLead(this.selectedLeadId);
+      }
+    },
+
+    toggleContactEdit() {
+      if (!this.selectedLead) return;
+
+      this.contactEditForm = {
+        name: this.selectedLead.name || "",
+        email: this.selectedLead.email || "",
+      };
+
+      this.contactEditOpen = !this.contactEditOpen;
+    },
+
+    async saveContactProfile() {
+      if (!this.selectedLead?.id || this.savingContact) return;
+
+      this.savingContact = true;
+      this.error = "";
+
+      try {
+        const updated = await this.api(
+          `/contacts/${encodeURIComponent(this.selectedLead.id)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              name: this.contactEditForm.name,
+              email: this.contactEditForm.email,
+            }),
+          },
+        );
+
+        this.selectedLead = {
+          ...this.selectedLead,
+          ...updated,
+        };
+
+        this.contactEditForm = {
+          name: updated?.name || "",
+          email: updated?.email || "",
+        };
+
+        this.contactEditOpen = false;
+
+        await this.refreshActiveView();
+      } catch (error) {
+        this.error = this.extractErrorMessage(error);
+      } finally {
+        this.savingContact = false;
+      }
+    },
+
+    async saveContactNote() {
+      const body = this.contactNoteBody.trim();
+
+      if (!body || !this.selectedLead?.id || this.savingNote) return;
+
+      this.savingNote = true;
+      this.error = "";
+
+      try {
+        await this.api(
+          `/contacts/${encodeURIComponent(this.selectedLead.id)}/notes`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              body,
+              createdBy: "crm-vue",
+            }),
+          },
+        );
+
+        this.contactNoteBody = "";
+        await this.openLead(this.selectedLead.id);
+        await this.refreshActiveView();
+      } catch (error) {
+        this.error = this.extractErrorMessage(error);
+      } finally {
+        this.savingNote = false;
       }
     },
 
