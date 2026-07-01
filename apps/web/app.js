@@ -878,6 +878,7 @@ createApp({
         contact.whatsappPushName ||
         lead.whatsappPushName ||
         item?.whatsappPushName ||
+        item?.pushName ||
         "";
 
       if (name && name.trim()) {
@@ -933,6 +934,32 @@ createApp({
       }
 
       return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    },
+
+    formatPhone(phone) {
+      const digits = String(phone || "").replace(/\D/g, "");
+
+      if (!digits) {
+        return "";
+      }
+
+      if (digits.startsWith("55") && digits.length === 13) {
+        return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 9)}-${digits.slice(9)}`;
+      }
+
+      if (digits.startsWith("55") && digits.length === 12) {
+        return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 8)}-${digits.slice(8)}`;
+      }
+
+      if (digits.startsWith("351") && digits.length === 12) {
+        return `+${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)} ${digits.slice(9)}`;
+      }
+
+      if (digits.length > 10) {
+        return `+${digits}`;
+      }
+
+      return digits;
     },
   },
 }).mount("#app");
