@@ -81,7 +81,7 @@
                     :class="{ active: selectedLeadId === lead.id }" type="button" @click="openLead(lead.id)">
                     <div class="lead-card-top">
                       <div>
-                        <strong>{{ displayName(selectedLead) }}</strong>
+                        <strong>{{ contactDisplayName(lead) }}</strong>
                         <span>{{ formatPhone(lead.phone) || 'Sem telefone' }}</span>
                       </div>
                       <span class="badge badge-neutral">{{ lead.source || 'lead' }}</span>
