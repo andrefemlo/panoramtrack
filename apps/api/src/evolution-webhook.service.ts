@@ -6,10 +6,14 @@ import {
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "./prisma.service";
+import { RealtimeEventsService } from "./realtime-events.service";
 
 @Injectable()
 export class EvolutionWebhookService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimeEvents: RealtimeEventsService,
+  ) {}
 
   async handleWebhook(payload: unknown, eventFromPath?: string) {
     const data = payload as any;
@@ -194,10 +198,12 @@ export class EvolutionWebhookService {
       },
     });
 
+    const clickCode = this.extractClickCode(messageText);
+
     let messageCreated = false;
 
     if (!existingMessage) {
-      await this.prisma.message.create({
+      const createdMessage = await this.prisma.message.create({
         data: {
           clientId: client.id,
           leadId: lead.id,
@@ -216,9 +222,15 @@ export class EvolutionWebhookService {
       });
 
       messageCreated = true;
-    }
 
-    const clickCode = this.extractClickCode(messageText);
+      this.realtimeEvents.emit({
+        type: "message.created",
+        conversationId: conversation.id,
+        leadId: lead.id,
+        messageId: createdMessage.id,
+        sentAt: createdMessage.sentAt.toISOString(),
+      });
+    }
 
     let attributionCreated = false;
     let matchMethod = "unknown";

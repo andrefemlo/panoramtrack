@@ -14,6 +14,8 @@ import { WhatsappInstancesService } from "./whatsapp-instances.service";
 import { WhatsappSyncService } from "./whatsapp-sync.service";
 import { ContactsController } from "./contacts.controller";
 import { ContactsService } from "./contacts.service";
+import { RealtimeEventsController } from "./realtime-events.controller";
+import { RealtimeEventsService } from "./realtime-events.service";
 
 @Module({
   controllers: [
@@ -21,12 +23,14 @@ import { ContactsService } from "./contacts.service";
     TrackingController,
     ConversationsController,
     EvolutionWebhookController,
+    RealtimeEventsController,
     LeadsController,
     WhatsappInstancesController,
     ContactsController,
   ],
   providers: [
     PrismaService,
+    RealtimeEventsService,
     TrackingService,
     EvolutionWebhookService,
     ConversationsService,

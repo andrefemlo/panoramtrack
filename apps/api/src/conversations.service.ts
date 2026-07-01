@@ -5,10 +5,14 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "./prisma.service";
+import { RealtimeEventsService } from "./realtime-events.service";
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimeEvents: RealtimeEventsService,
+  ) {}
 
   async listConversations(query: {
     search?: string;
@@ -351,6 +355,14 @@ export class ConversationsService {
       },
     });
 
+    this.realtimeEvents.emit({
+      type: "message.created",
+      conversationId: context.conversation.id,
+      leadId: context.lead.id,
+      messageId: message.id,
+      sentAt: message.sentAt.toISOString(),
+    });
+
     return {
       status: "ok",
       duplicated: false,
@@ -468,6 +480,14 @@ export class ConversationsService {
       },
     });
 
+    this.realtimeEvents.emit({
+      type: "message.created",
+      conversationId: context.conversation.id,
+      leadId: context.lead.id,
+      messageId: message.id,
+      sentAt: message.sentAt.toISOString(),
+    });
+
     return {
       status: "ok",
       duplicated: false,
@@ -545,6 +565,14 @@ export class ConversationsService {
       data: {
         lastMessageAt: message.sentAt,
       },
+    });
+
+    this.realtimeEvents.emit({
+      type: "message.created",
+      conversationId: context.conversation.id,
+      leadId: context.lead.id,
+      messageId: message.id,
+      sentAt: message.sentAt.toISOString(),
     });
 
     return {
@@ -662,6 +690,14 @@ export class ConversationsService {
       data: {
         lastMessageAt: message.sentAt,
       },
+    });
+
+    this.realtimeEvents.emit({
+      type: "message.created",
+      conversationId: context.conversation.id,
+      leadId: context.lead.id,
+      messageId: message.id,
+      sentAt: message.sentAt.toISOString(),
     });
 
     return {
