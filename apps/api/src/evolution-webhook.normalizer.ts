@@ -195,8 +195,13 @@ function extractLeadPhone(payload: any): string | null {
   }
 
   const raw = chatId.split("@")[0];
+  const phone = raw.replace(/\D/g, "");
 
-  return raw.replace(/\D/g, "") || null;
+  if (phone.length < 8) {
+    return null;
+  }
+
+  return phone;
 }
 
 function extractMessageId(payload: any): string | null {

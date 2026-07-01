@@ -1053,7 +1053,11 @@ export class WhatsappSyncService {
   private phoneFromChatId(chatId: string): string | null {
     const phone = chatId.split("@")[0]?.replace(/\D/g, "") || "";
 
-    return phone || null;
+    if (phone.length < 8) {
+      return null;
+    }
+
+    return phone;
   }
 
   private shouldUpdateLeadName(params: {
