@@ -116,6 +116,8 @@ model Lead {
   id             String   @id @default(cuid())
   clientId       String
   name           String?
+  whatsappName     String?
+  whatsappPushName String?
   phone          String
   email          String?
   profilePictureUrl String?

@@ -273,8 +273,13 @@ export class WhatsappSyncService {
 
       const data: {
         name?: string;
+        whatsappName?: string;
         profilePictureUrl?: string;
       } = {};
+
+      if (contact.name) {
+        data.whatsappName = contact.name;
+      }
 
       if (
         contact.name &&

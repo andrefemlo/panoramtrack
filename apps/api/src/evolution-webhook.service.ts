@@ -121,27 +121,38 @@ export class EvolutionWebhookService {
       },
     });
 
+    const leadUpdateData: {
+      name?: string;
+      whatsappPushName?: string;
+    } = {};
+
+    if (contactName) {
+      leadUpdateData.whatsappPushName = contactName;
+
+      if (
+        existingLead &&
+        this.shouldUpdateLeadName(
+          existingLead.name,
+          existingLead.phone,
+          contactName,
+        )
+      ) {
+        leadUpdateData.name = contactName;
+      }
+    }
+
     const lead = existingLead
       ? await this.prisma.lead.update({
           where: {
             id: existingLead.id,
           },
-          data:
-            contactName &&
-            this.shouldUpdateLeadName(
-              existingLead.name,
-              existingLead.phone,
-              contactName,
-            )
-              ? {
-                  name: contactName,
-                }
-              : {},
+          data: leadUpdateData,
         })
       : await this.prisma.lead.create({
           data: {
             clientId: client.id,
             name: contactName,
+            whatsappPushName: contactName,
             phone: leadPhone,
             source: "whatsapp",
             firstMessage: messageText || null,

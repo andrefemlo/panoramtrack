@@ -230,10 +230,13 @@ export class ConversationsService {
 
         contact: {
           id: conversation.lead.id,
+          leadName: conversation.lead?.name || null,
+          whatsappName: conversation.lead?.whatsappName || null,
+          whatsappPushName: conversation.lead?.whatsappPushName || null,
+          profilePictureUrl: conversation.lead?.profilePictureUrl || null,
           name: conversation.lead.name,
           phone: conversation.lead.phone,
           email: conversation.lead.email,
-          profilePictureUrl: conversation.lead.profilePictureUrl,
           source: conversation.lead.source,
           currentStage: conversation.lead.currentStage || "new_lead",
           status: conversation.lead.status,
@@ -1158,6 +1161,8 @@ export class ConversationsService {
             name: lead.name,
             phone: lead.phone,
             email: lead.email,
+            whatsappName: lead.whatsappName,
+            whatsappPushName: lead.whatsappPushName,
             profilePictureUrl: lead.profilePictureUrl || null,
             source: lead.source,
             currentStage: lead.currentStage || "new_lead",
