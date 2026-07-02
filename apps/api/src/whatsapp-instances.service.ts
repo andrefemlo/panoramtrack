@@ -186,9 +186,14 @@ export class WhatsappInstancesService {
 
     await this.refreshInstanceStatus(instanceName);
 
+    const qrCode = this.extractQrCode(result);
+
     return {
       status: "ok",
       instanceName,
+      qrCodeDataUrl: qrCode.dataUrl,
+      qrCodeText: qrCode.text,
+      pairingCode: qrCode.pairingCode,
       evolutionResponse: result,
     };
   }
@@ -404,6 +409,92 @@ export class WhatsappInstancesService {
       value.data?.connectionStatus;
 
     return typeof state === "string" && state.trim() ? state.trim() : null;
+  }
+
+  private extractQrCode(data: unknown): {
+    dataUrl: string | null;
+    text: string | null;
+    pairingCode: string | null;
+  } {
+    const strings = this.collectStrings(data);
+    const dataUrl = strings.find((value) =>
+      /^data:image\/(png|jpeg|webp|svg\+xml);base64,/i.test(value),
+    );
+    const rawBase64 = strings.find((value) =>
+      /^[A-Za-z0-9+/=]{200,}$/.test(value),
+    );
+    const qrText = strings.find((value) =>
+      /^(2@|https?:\/\/|wa:|WIFI:)/i.test(value),
+    );
+    const pairingCode = this.findStringByKey(data, [
+      "pairingCode",
+      "pairing_code",
+      "code",
+    ]);
+
+    return {
+      dataUrl: dataUrl || (rawBase64 ? `data:image/png;base64,${rawBase64}` : null),
+      text: qrText || null,
+      pairingCode: pairingCode || null,
+    };
+  }
+
+  private collectStrings(value: unknown, depth = 0): string[] {
+    if (depth > 8 || value === null || value === undefined) {
+      return [];
+    }
+
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? [trimmed] : [];
+    }
+
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => this.collectStrings(item, depth + 1));
+    }
+
+    if (typeof value === "object") {
+      return Object.values(value).flatMap((item) =>
+        this.collectStrings(item, depth + 1),
+      );
+    }
+
+    return [];
+  }
+
+  private findStringByKey(value: unknown, keys: string[], depth = 0): string | null {
+    if (depth > 8 || !value || typeof value !== "object") {
+      return null;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const result = this.findStringByKey(item, keys, depth + 1);
+        if (result) return result;
+      }
+
+      return null;
+    }
+
+    const record = value as Record<string, unknown>;
+    const normalizedKeys = keys.map((key) => key.toLowerCase());
+
+    for (const [key, childValue] of Object.entries(record)) {
+      if (
+        normalizedKeys.includes(key.toLowerCase()) &&
+        typeof childValue === "string" &&
+        childValue.trim()
+      ) {
+        return childValue.trim();
+      }
+    }
+
+    for (const childValue of Object.values(record)) {
+      const result = this.findStringByKey(childValue, keys, depth + 1);
+      if (result) return result;
+    }
+
+    return null;
   }
 
   private decodeInstanceName(value: string): string {

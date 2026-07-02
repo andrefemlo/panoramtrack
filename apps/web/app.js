@@ -23,6 +23,8 @@ createApp({
       attributionModalOpen: false,
       candidateSearch: "",
       composerText: "",
+      connectionError: "",
+      connectionLoading: false,
       selectedMediaFile: null,
       selectedMediaLabel: "",
       sendingMessage: false,
@@ -63,16 +65,40 @@ createApp({
       search: "",
       searchTimer: null,
       eventsSource: null,
+      qrModalOpen: false,
+      qrCodeDataUrl: "",
+      qrCodeText: "",
+      qrPairingCode: "",
+      selectedWhatsappInstanceName: "",
       selectedConversation: null,
       selectedConversationId: null,
       selectedLead: null,
       selectedLeadId: null,
       stages: DEFAULT_STAGES,
       view: "pipeline",
+      whatsappInstances: [],
     };
   },
 
   computed: {
+    currentWhatsappInstance() {
+      return (
+        this.whatsappInstances.find(
+          (instance) => instance.name === this.selectedWhatsappInstanceName,
+        ) ||
+        this.whatsappInstances[0] ||
+        null
+      );
+    },
+
+    whatsappConnectionLabel() {
+      return this.connectionStatusLabel(this.currentWhatsappInstance?.status);
+    },
+
+    whatsappConnectionClass() {
+      return this.connectionStatusClass(this.currentWhatsappInstance?.status);
+    },
+
     currentSubtitle() {
       if (this.view === "conversations") return "Atendimento WhatsApp";
       if (this.view === "contacts") return "Base comercial";
@@ -103,6 +129,7 @@ createApp({
 
   mounted() {
     this.checkHealth();
+    this.loadWhatsappInstances().then(() => this.refreshWhatsappStatus());
     this.refreshActiveView();
     this.connectRealtimeEvents();
   },
@@ -139,6 +166,125 @@ createApp({
         this.apiStatus = "API offline";
         console.error(error);
       }
+    },
+
+    async loadWhatsappInstances() {
+      this.connectionError = "";
+
+      try {
+        const data = await this.api("/whatsapp-instances");
+        this.whatsappInstances = data?.instances || [];
+
+        if (
+          !this.selectedWhatsappInstanceName ||
+          !this.whatsappInstances.some(
+            (instance) => instance.name === this.selectedWhatsappInstanceName,
+          )
+        ) {
+          this.selectedWhatsappInstanceName = this.whatsappInstances[0]?.name || "";
+        }
+      } catch (error) {
+        this.connectionError = this.extractErrorMessage(error);
+      }
+    },
+
+    async refreshWhatsappStatus() {
+      const instanceName = this.selectedWhatsappInstanceName;
+
+      if (!instanceName || this.connectionLoading) {
+        return;
+      }
+
+      this.connectionLoading = true;
+      this.connectionError = "";
+
+      try {
+        const data = await this.api(
+          `/whatsapp-instances/${encodeURIComponent(instanceName)}/status`,
+          { method: "POST", body: JSON.stringify({}) },
+        );
+        const updatedInstance = data?.instance;
+
+        if (updatedInstance) {
+          this.upsertWhatsappInstance(updatedInstance);
+        } else {
+          await this.loadWhatsappInstances();
+        }
+      } catch (error) {
+        this.connectionError = this.extractErrorMessage(error);
+      } finally {
+        this.connectionLoading = false;
+      }
+    },
+
+    async generateWhatsappQrCode() {
+      const instanceName = this.selectedWhatsappInstanceName;
+
+      if (!instanceName || this.connectionLoading) {
+        return;
+      }
+
+      this.connectionLoading = true;
+      this.connectionError = "";
+      this.qrCodeDataUrl = "";
+      this.qrCodeText = "";
+      this.qrPairingCode = "";
+
+      try {
+        const data = await this.api(
+          `/whatsapp-instances/${encodeURIComponent(instanceName)}/reconnect`,
+          { method: "POST", body: JSON.stringify({}) },
+        );
+
+        this.qrCodeDataUrl = data?.qrCodeDataUrl || "";
+        this.qrCodeText = data?.qrCodeText || "";
+        this.qrPairingCode = data?.pairingCode || "";
+        this.qrModalOpen = true;
+
+        await this.loadWhatsappInstances();
+      } catch (error) {
+        this.connectionError = this.extractErrorMessage(error);
+      } finally {
+        this.connectionLoading = false;
+      }
+    },
+
+    closeQrModal() {
+      this.qrModalOpen = false;
+      this.qrCodeDataUrl = "";
+      this.qrCodeText = "";
+      this.qrPairingCode = "";
+    },
+
+    upsertWhatsappInstance(updatedInstance) {
+      const index = this.whatsappInstances.findIndex(
+        (instance) => instance.name === updatedInstance.name,
+      );
+
+      if (index >= 0) {
+        this.whatsappInstances.splice(index, 1, {
+          ...this.whatsappInstances[index],
+          ...updatedInstance,
+        });
+      } else {
+        this.whatsappInstances.unshift(updatedInstance);
+      }
+
+      this.selectedWhatsappInstanceName = updatedInstance.name;
+    },
+
+    connectionStatusLabel(status) {
+      if (status === "active") return "Conectado";
+      if (status === "inactive") return "Desconectado";
+      if (status === "deleted") return "Desativado";
+      return "Sem instância";
+    },
+
+    connectionStatusClass(status) {
+      if (status === "active") return "connected";
+      if (status === "inactive") return "disconnected";
+      if (status === "deleted") return "disabled";
+      return "unknown";
     },
 
     async refreshActiveView() {

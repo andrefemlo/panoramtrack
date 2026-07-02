@@ -31,6 +31,41 @@
         <div class="sidebar-footer">
           <span>Ambiente</span>
           <strong>{{ apiStatus }}</strong>
+
+          <div class="connection-panel">
+            <div class="connection-panel-top">
+              <span>WhatsApp</span>
+              <strong :class="['connection-status', whatsappConnectionClass]">
+                {{ whatsappConnectionLabel }}
+              </strong>
+            </div>
+
+            <select v-if="whatsappInstances.length > 1" v-model="selectedWhatsappInstanceName"
+              class="connection-select">
+              <option v-for="instance in whatsappInstances" :key="instance.id || instance.name" :value="instance.name">
+                {{ instance.name }}
+              </option>
+            </select>
+
+            <small v-else class="connection-instance">
+              {{ currentWhatsappInstance?.name || 'Nenhuma instância' }}
+            </small>
+
+            <div class="connection-actions">
+              <button class="sidebar-action" type="button" :disabled="connectionLoading || !selectedWhatsappInstanceName"
+                @click="refreshWhatsappStatus">
+                Atualizar
+              </button>
+              <button class="sidebar-action primary" type="button"
+                :disabled="connectionLoading || !selectedWhatsappInstanceName" @click="generateWhatsappQrCode">
+                QR Code
+              </button>
+            </div>
+
+            <small v-if="connectionError" class="connection-error">
+              {{ connectionError }}
+            </small>
+          </div>
         </div>
       </aside>
 
@@ -518,6 +553,38 @@
               Salvar atribuição
             </button>
           </section>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="qrModalOpen" class="modal-backdrop">
+      <section class="modal qr-modal">
+        <header class="modal-header">
+          <div>
+            <p>Conexão WhatsApp</p>
+            <h2>{{ selectedWhatsappInstanceName }}</h2>
+          </div>
+          <button class="icon-button" type="button" @click="closeQrModal">×</button>
+        </header>
+
+        <div class="qr-modal-body">
+          <img v-if="qrCodeDataUrl" class="qr-code-image" :src="qrCodeDataUrl" alt="QR Code do WhatsApp" />
+
+          <div v-else class="qr-empty">
+            <strong>QR Code não retornado</strong>
+            <span>Se a instância já estiver conectada, nenhum QR será gerado.</span>
+          </div>
+
+          <div v-if="qrPairingCode" class="pairing-code">
+            <span>Código de pareamento</span>
+            <strong>{{ qrPairingCode }}</strong>
+          </div>
+
+          <textarea v-if="qrCodeText" class="qr-code-text" readonly :value="qrCodeText"></textarea>
+
+          <button class="secondary-button" type="button" @click="refreshWhatsappStatus">
+            Verificar conexão
+          </button>
         </div>
       </section>
     </div>
