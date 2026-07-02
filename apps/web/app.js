@@ -42,6 +42,7 @@ createApp({
       drawerMessage: "",
       error: "",
       leads: [],
+      attributionEditingId: "",
       contactEditForm: {
         name: "",
         email: "",
@@ -1050,24 +1051,29 @@ createApp({
       );
     },
 
-    openAttributionModal() {
+    openAttributionModal(attribution = null) {
       if (!this.selectedLead) return;
 
       this.attributionModalOpen = true;
       this.candidateSearch = "";
+      this.attributionEditingId = attribution?.id || "";
       this.manualAttribution = {
-        utmSource: "",
-        utmMedium: "",
-        utmCampaign: "",
-        utmTerm: "",
-        utmContent: "",
+        utmSource: attribution?.utmSource || attribution?.sourcePlatform || "",
+        utmMedium: attribution?.utmMedium || "",
+        utmCampaign: attribution?.utmCampaign || attribution?.campaignName || "",
+        utmTerm: attribution?.utmTerm || "",
+        utmContent: attribution?.utmContent || "",
       };
-      this.loadAttributionCandidates();
+
+      if (!this.attributionEditingId) {
+        this.loadAttributionCandidates();
+      }
     },
 
     closeAttributionModal() {
       this.attributionModalOpen = false;
       this.attributionCandidates = [];
+      this.attributionEditingId = "";
     },
 
     async loadAttributionCandidates() {
@@ -1118,10 +1124,14 @@ createApp({
         return;
       }
 
+      const path = this.attributionEditingId
+        ? `/leads/${encodeURIComponent(this.selectedLead.id)}/attributions/${encodeURIComponent(this.attributionEditingId)}`
+        : `/leads/${encodeURIComponent(this.selectedLead.id)}/attributions/manual`;
+
       await this.api(
-        `/leads/${encodeURIComponent(this.selectedLead.id)}/attributions/manual`,
+        path,
         {
-          method: "POST",
+          method: this.attributionEditingId ? "PATCH" : "POST",
           body: JSON.stringify(payload),
         },
       );
@@ -1133,6 +1143,35 @@ createApp({
 
     lastMessages(messages = []) {
       return [...messages].slice(-8).reverse();
+    },
+
+    leadTimeline(lead) {
+      const notes = (lead?.notes || []).map((note) => ({
+        key: `note-${note.id}`,
+        title: note.body,
+        label: "Anotação",
+        date: note.createdAt,
+      }));
+
+      const history = (lead?.stageHistory || []).map((item) => ({
+        key: `history-${item.id}`,
+        title: `${this.stageLabel(item.fromStage)} → ${this.stageLabel(item.toStage)}`,
+        label: "Histórico",
+        date: item.changedAt,
+      }));
+
+      return [...notes, ...history].sort(
+        (a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime(),
+      );
+    },
+
+    stageLabel(stageSlug) {
+      if (!stageSlug) return "Início";
+
+      return (
+        this.stages.find((stage) => stage.slug === stageSlug)?.label ||
+        String(stageSlug)
+      );
     },
 
     messageTypeLabel(message) {

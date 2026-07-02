@@ -591,6 +591,62 @@ export class LeadsService {
     };
   }
 
+  async updateAttribution(
+    leadId: string,
+    attributionId: string,
+    body: {
+      sourcePlatform?: unknown;
+      campaignName?: unknown;
+      utmSource?: unknown;
+      utmMedium?: unknown;
+      utmCampaign?: unknown;
+      utmContent?: unknown;
+      utmTerm?: unknown;
+    },
+  ) {
+    const client = await this.getDemoClient();
+
+    const attribution = await this.prisma.leadAttribution.findFirst({
+      where: {
+        id: attributionId,
+        leadId,
+        clientId: client.id,
+        lead: {
+          conversations: {
+            some: this.activeIndividualConversationWhere(),
+          },
+        },
+      },
+    });
+
+    if (!attribution) {
+      throw new NotFoundException("Attribution not found");
+    }
+
+    const updatedAttribution = await this.prisma.leadAttribution.update({
+      where: {
+        id: attribution.id,
+      },
+      data: {
+        sourcePlatform:
+          this.optionalString(body.sourcePlatform) ||
+          this.optionalString(body.utmSource),
+        campaignName:
+          this.optionalString(body.campaignName) ||
+          this.optionalString(body.utmCampaign),
+        utmSource: this.optionalString(body.utmSource),
+        utmMedium: this.optionalString(body.utmMedium),
+        utmCampaign: this.optionalString(body.utmCampaign),
+        utmContent: this.optionalString(body.utmContent),
+        utmTerm: this.optionalString(body.utmTerm),
+      },
+    });
+
+    return {
+      attribution: updatedAttribution,
+    };
+  }
+
   private async syncWhatsappInstanceStatuses(clientId: string) {
     const baseUrl = process.env.EVOLUTION_API_URL;
     const apiKey = process.env.EVOLUTION_API_KEY;

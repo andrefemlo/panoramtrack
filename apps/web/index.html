@@ -445,23 +445,13 @@
               </button>
             </div>
 
-            <article v-for="note in selectedLead.notes || []" :key="note.id" class="info-card compact">
-              <strong>{{ note.body }}</strong>
-              <span>{{ note.createdBy || 'CRM' }} · {{ formatDate(note.createdAt) }}</span>
+            <article v-for="item in leadTimeline(selectedLead)" :key="item.key" class="info-card compact">
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.label }} · {{ formatDate(item.date) }}</span>
             </article>
 
-            <p v-if="!selectedLead.notes?.length" class="empty-state">
+            <p v-if="!leadTimeline(selectedLead).length" class="empty-state">
               Nenhuma anotação registrada.
-            </p>
-
-            <h4 class="section-subtitle">Histórico</h4>
-            <article v-for="item in selectedLead.stageHistory || []" :key="item.id" class="info-card compact">
-              <strong>{{ item.fromStage || 'início' }} → {{ item.toStage }}</strong>
-              <span>{{ formatDate(item.changedAt) }}</span>
-            </article>
-
-            <p v-if="!selectedLead.stageHistory?.length" class="empty-state">
-              Nenhum histórico registrado.
             </p>
           </section>
 
@@ -478,6 +468,9 @@
                 <span class="badge badge-green">{{ attribution.matchMethod }}</span>
                 <span class="badge badge-blue">{{ attribution.matchConfidence }}</span>
               </div>
+              <button class="text-button attribution-edit-button" type="button" @click="openAttributionModal(attribution)">
+                Editar campanha
+              </button>
               <strong>{{ attribution.utmCampaign || attribution.campaignName || 'Sem campanha' }}</strong>
               <span>{{ attribution.utmSource || attribution.sourcePlatform || 'Origem não informada' }}</span>
               <span v-if="attribution.utmMedium">Canal: {{ attribution.utmMedium }}</span>
@@ -501,14 +494,14 @@
       <section class="modal">
         <header class="modal-header">
           <div>
-            <p>Atribuição manual</p>
+            <p>{{ attributionEditingId ? 'Editar atribuição' : 'Atribuição manual' }}</p>
             <h2>{{ contactDisplayName(selectedLead) }}</h2>
           </div>
           <button class="icon-button" type="button" @click="closeAttributionModal">×</button>
         </header>
 
         <div class="modal-body">
-          <section class="modal-column">
+          <section v-if="!attributionEditingId" class="modal-column">
             <h3>Cliques candidatos</h3>
             <div class="inline-search">
               <input v-model="candidateSearch" type="search" placeholder="Buscar campanha, clickCode, fbclid..."
@@ -534,7 +527,7 @@
           </section>
 
           <section class="modal-column">
-            <h3>Sem clique</h3>
+            <h3>{{ attributionEditingId ? 'Campanha atribuída' : 'Sem clique' }}</h3>
             <label class="field-label">Plataforma (utm_source)</label>
             <input v-model="manualAttribution.utmSource" placeholder="meta, google, direct..." />
 
@@ -551,7 +544,7 @@
             <input v-model="manualAttribution.utmContent" placeholder="criativo_a..." />
 
             <button class="primary-button" type="button" @click="saveManualAttribution">
-              Salvar atribuição
+              {{ attributionEditingId ? 'Salvar edição' : 'Salvar atribuição' }}
             </button>
           </section>
         </div>

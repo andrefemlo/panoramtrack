@@ -58,6 +58,19 @@ export class LeadsController {
     );
   }
 
+  @Patch(":id/attributions/:attributionId")
+  async updateAttribution(
+    @Param("id") id: string,
+    @Param("attributionId") attributionId: string,
+    @Body() body: unknown,
+  ) {
+    return this.leadsService.updateAttribution(
+      id,
+      attributionId,
+      body && typeof body === "object" ? body : {},
+    );
+  }
+
   @Patch(":id/stage")
   async updateLeadStage(@Param("id") id: string, @Body() body: unknown) {
     return this.leadsService.updateLeadStage(
