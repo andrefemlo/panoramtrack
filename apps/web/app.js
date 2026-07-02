@@ -254,13 +254,29 @@ createApp({
       );
     },
 
-    async openLead(leadId) {
+    async openLead(leadId, leadPreview = null) {
       this.selectedLeadId = leadId;
       this.drawerOpen = true;
-      this.selectedLead = null;
       this.drawerMessage = "";
+      this.contactEditOpen = false;
+      this.contactNoteBody = "";
+
+      if (leadPreview) {
+        this.selectedLead = this.buildLeadPreview(leadPreview);
+        this.contactEditForm = {
+          name: this.selectedLead?.name || "",
+          email: this.selectedLead?.email || "",
+        };
+      } else {
+        this.selectedLead = null;
+      }
 
       const lead = await this.api(`/leads/${encodeURIComponent(leadId)}`);
+
+      if (this.selectedLeadId !== leadId) {
+        return;
+      }
+
       this.selectedLead = lead;
       this.contactEditForm = {
         name: lead?.name || "",
@@ -269,6 +285,17 @@ createApp({
       this.contactEditOpen = false;
       this.contactNoteBody = "";
       this.stages = this.normalizeStages(lead?.stages || this.stages);
+    },
+
+    buildLeadPreview(lead) {
+      return {
+        ...lead,
+        attributions: lead.latestAttribution ? [lead.latestAttribution] : [],
+        conversations: lead.latestConversation ? [lead.latestConversation] : [],
+        messages: lead.latestMessage ? [lead.latestMessage] : [],
+        notes: [],
+        stageHistory: [],
+      };
     },
 
     closeDrawer() {
@@ -952,6 +979,10 @@ createApp({
       await this.refreshActiveView();
     },
 
+    lastMessages(messages = []) {
+      return [...messages].slice(-8).reverse();
+    },
+
     messageTypeLabel(message) {
       if (!message) return "Sem mensagem";
       if (message.messageType === "image") return "Imagem";
@@ -1228,58 +1259,6 @@ createApp({
 
       return digits;
     },
-
-    // startPolling() {
-    //   this.stopPolling();
-
-    //   this.pollingTimer = window.setInterval(() => {
-    //     this.pollActiveView();
-    //   }, 5000);
-    // },
-
-    // stopPolling() {
-    //   if (this.pollingTimer) {
-    //     window.clearInterval(this.pollingTimer);
-    //     this.pollingTimer = null;
-    //   }
-    // },
-
-    // async pollActiveView() {
-    //   if (this.isPolling || this.loading) {
-    //     return;
-    //   }
-
-    //   if (document.hidden) {
-    //     return;
-    //   }
-
-    //   this.isPolling = true;
-
-    //   try {
-    //     if (this.view === "conversations") {
-    //       const currentConversationId = this.selectedConversationId;
-
-    //       await this.loadConversations({ silent: true });
-
-    //       if (currentConversationId) {
-    //         await this.refreshConversationMessages(currentConversationId);
-    //       }
-
-    //       return;
-    //     }
-
-    //     if (this.view === "contacts") {
-    //       await this.loadContacts();
-    //       return;
-    //     }
-
-    //     await this.loadPipeline();
-    //   } catch (error) {
-    //     console.error(error);
-    //   } finally {
-    //     this.isPolling = false;
-    //   }
-    // },
 
     connectRealtimeEvents() {
       this.disconnectRealtimeEvents();

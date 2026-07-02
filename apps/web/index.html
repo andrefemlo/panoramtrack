@@ -78,7 +78,7 @@
 
                 <div class="column-body">
                   <button v-for="lead in leadsByStage(stage.slug)" :key="lead.id" class="lead-card"
-                    :class="{ active: selectedLeadId === lead.id }" type="button" @click="openLead(lead.id)">
+                    :class="{ active: selectedLeadId === lead.id }" type="button" @click="openLead(lead.id, lead)">
                     <div class="lead-card-top">
                       <div>
                         <strong>{{ contactDisplayName(lead) }}</strong>
@@ -275,7 +275,7 @@
           <section v-else class="contacts-view">
             <div class="contacts-grid">
               <button v-for="contact in contacts" :key="contact.id" class="contact-card"
-                :class="{ active: selectedLeadId === contact.id }" type="button" @click="openLead(contact.id)">
+                :class="{ active: selectedLeadId === contact.id }" type="button" @click="openLead(contact.id, contact)">
                 <div class="avatar">
                   <img v-if="contactAvatarUrl(contact)" class="contact-avatar-img" :src="contactAvatarUrl(contact)"
                     :alt="contactDisplayName(contact)" />
