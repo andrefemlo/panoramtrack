@@ -899,6 +899,14 @@ select:focus {
   margin-bottom: 10px;
 }
 
+.section-subtitle {
+  margin: 14px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .field-label {
   display: block;
   margin: 10px 0 5px;
@@ -931,6 +939,10 @@ select:focus {
 .drawer-composer input:focus {
   border-color: var(--brand);
   box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.14);
+}
+
+.drawer-message-composer {
+  margin-top: 12px;
 }
 
 .info-card {

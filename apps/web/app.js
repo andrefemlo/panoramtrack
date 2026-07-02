@@ -52,10 +52,11 @@ createApp({
       savingNote: false,
       loading: false,
       manualAttribution: {
-        campaignName: "",
-        sourcePlatform: "manual",
-        utmCampaign: "",
         utmSource: "",
+        utmMedium: "",
+        utmCampaign: "",
+        utmTerm: "",
+        utmContent: "",
       },
       navItems: [
         { view: "pipeline", label: "Pipeline", icon: "▦" },
@@ -1055,10 +1056,11 @@ createApp({
       this.attributionModalOpen = true;
       this.candidateSearch = "";
       this.manualAttribution = {
-        campaignName: "",
-        sourcePlatform: "manual",
-        utmCampaign: "",
         utmSource: "",
+        utmMedium: "",
+        utmCampaign: "",
+        utmTerm: "",
+        utmContent: "",
       };
       this.loadAttributionCandidates();
     },
@@ -1099,16 +1101,20 @@ createApp({
     async saveManualAttribution() {
       const payload = {
         ...this.manualAttribution,
-        utmSource:
-          this.manualAttribution.utmSource ||
-          this.manualAttribution.sourcePlatform,
-        utmCampaign:
-          this.manualAttribution.utmCampaign ||
-          this.manualAttribution.campaignName,
+        sourcePlatform: this.manualAttribution.utmSource || "manual",
+        campaignName: this.manualAttribution.utmCampaign || "",
       };
 
-      if (!payload.campaignName && !payload.utmCampaign) {
-        this.error = "Informe ao menos uma campanha para atribuir manualmente.";
+      const hasAttributionField = [
+        payload.utmSource,
+        payload.utmMedium,
+        payload.utmCampaign,
+        payload.utmTerm,
+        payload.utmContent,
+      ].some((value) => String(value || "").trim());
+
+      if (!hasAttributionField) {
+        this.error = "Informe ao menos um campo de atribuição.";
         return;
       }
 

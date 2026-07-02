@@ -405,59 +405,30 @@
 
           <section class="drawer-section">
             <div class="section-title">
-              <h3>Atendimento</h3>
+              <h3>Mensagens recentes</h3>
               <button class="secondary-button small" type="button" @click="openLeadConversation(selectedLead)">
                 Abrir conversa
               </button>
             </div>
 
-            <div class="drawer-composer">
-              <input v-model="drawerMessage" type="text" placeholder="Enviar mensagem pelo WhatsApp..."
-                @keydown.enter="sendDrawerMessage" />
-              <button class="primary-button small" type="button" @click="sendDrawerMessage">
-                Enviar
-              </button>
-            </div>
-          </section>
-
-          <section class="drawer-section">
-            <div class="section-title">
-              <h3>Atribuição</h3>
-              <button class="primary-button small" type="button" @click="openAttributionModal">
-                Atribuir
-              </button>
-            </div>
-
-            <article v-for="attribution in selectedLead.attributions || []" :key="attribution.id" class="info-card">
-              <div class="badge-row">
-                <span class="badge badge-green">{{ attribution.matchMethod }}</span>
-                <span class="badge badge-blue">{{ attribution.matchConfidence }}</span>
-              </div>
-              <strong>{{ attribution.utmCampaign || attribution.campaignName || 'Sem campanha' }}</strong>
-              <span>{{ attribution.utmSource || attribution.sourcePlatform || 'Origem não informada' }}</span>
-            </article>
-
-            <p v-if="!selectedLead.attributions?.length" class="empty-state">
-              Nenhuma atribuição.
-            </p>
-          </section>
-
-          <section class="drawer-section">
-            <h3>Conversas</h3>
-            <article v-for="conversation in selectedLead.conversations || []" :key="conversation.id" class="info-card">
-              <strong>{{ conversation.externalChatId }}</strong>
-              <span>{{ conversation.status }} · {{ formatDate(conversation.lastMessageAt) }}</span>
-            </article>
-          </section>
-
-          <section class="drawer-section">
-            <h3>Mensagens recentes</h3>
             <div class="mini-chat">
               <div v-for="message in lastMessages(selectedLead.messages)" :key="message.id" class="mini-message"
                 :class="message.direction">
                 <p>{{ message.body || messageTypeLabel(message) }}</p>
                 <small>{{ formatDate(message.sentAt) }}</small>
               </div>
+            </div>
+
+            <p v-if="!lastMessages(selectedLead.messages).length" class="empty-state">
+              Nenhuma mensagem recente.
+            </p>
+
+            <div class="drawer-composer drawer-message-composer">
+              <input v-model="drawerMessage" type="text" placeholder="Enviar mensagem pelo WhatsApp..."
+                @keydown.enter="sendDrawerMessage" />
+              <button class="primary-button small" type="button" @click="sendDrawerMessage">
+                Enviar
+              </button>
             </div>
           </section>
 
@@ -482,14 +453,41 @@
             <p v-if="!selectedLead.notes?.length" class="empty-state">
               Nenhuma anotação registrada.
             </p>
-          </section>
 
-          <section class="drawer-section">
-            <h3>Histórico</h3>
+            <h4 class="section-subtitle">Histórico</h4>
             <article v-for="item in selectedLead.stageHistory || []" :key="item.id" class="info-card compact">
               <strong>{{ item.fromStage || 'início' }} → {{ item.toStage }}</strong>
               <span>{{ formatDate(item.changedAt) }}</span>
             </article>
+
+            <p v-if="!selectedLead.stageHistory?.length" class="empty-state">
+              Nenhum histórico registrado.
+            </p>
+          </section>
+
+          <section class="drawer-section">
+            <div class="section-title">
+              <h3>Atribuição</h3>
+              <button class="primary-button small" type="button" @click="openAttributionModal">
+                Atribuir
+              </button>
+            </div>
+
+            <article v-for="attribution in selectedLead.attributions || []" :key="attribution.id" class="info-card">
+              <div class="badge-row">
+                <span class="badge badge-green">{{ attribution.matchMethod }}</span>
+                <span class="badge badge-blue">{{ attribution.matchConfidence }}</span>
+              </div>
+              <strong>{{ attribution.utmCampaign || attribution.campaignName || 'Sem campanha' }}</strong>
+              <span>{{ attribution.utmSource || attribution.sourcePlatform || 'Origem não informada' }}</span>
+              <span v-if="attribution.utmMedium">Canal: {{ attribution.utmMedium }}</span>
+              <span v-if="attribution.utmTerm">Termo: {{ attribution.utmTerm }}</span>
+              <span v-if="attribution.utmContent">Criativo: {{ attribution.utmContent }}</span>
+            </article>
+
+            <p v-if="!selectedLead.attributions?.length" class="empty-state">
+              Nenhuma atribuição.
+            </p>
           </section>
         </template>
 
@@ -537,17 +535,20 @@
 
           <section class="modal-column">
             <h3>Sem clique</h3>
-            <label class="field-label">Plataforma</label>
-            <input v-model="manualAttribution.sourcePlatform" placeholder="meta, google, direct..." />
+            <label class="field-label">Plataforma (utm_source)</label>
+            <input v-model="manualAttribution.utmSource" placeholder="meta, google, direct..." />
 
-            <label class="field-label">Campanha</label>
-            <input v-model="manualAttribution.campaignName" placeholder="Nome da campanha" />
+            <label class="field-label">Canal (utm_medium)</label>
+            <input v-model="manualAttribution.utmMedium" placeholder="cpc, organic, social..." />
 
-            <label class="field-label">UTM source</label>
-            <input v-model="manualAttribution.utmSource" placeholder="meta, google..." />
-
-            <label class="field-label">UTM campaign</label>
+            <label class="field-label">Campanha (utm_campaign)</label>
             <input v-model="manualAttribution.utmCampaign" placeholder="campanha_x" />
+
+            <label class="field-label">Termo (utm_term)</label>
+            <input v-model="manualAttribution.utmTerm" placeholder="palavra-chave..." />
+
+            <label class="field-label">Criativo (utm_content)</label>
+            <input v-model="manualAttribution.utmContent" placeholder="criativo_a..." />
 
             <button class="primary-button" type="button" @click="saveManualAttribution">
               Salvar atribuição
